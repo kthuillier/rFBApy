@@ -1,0 +1,56 @@
+{
+    "ID": "Fig5",
+    "title": "Fig5",
+    "SimulationParameters": {
+        "initBiomass": 0.01,
+        "timeStep": 0.01,
+        "nSteps": 300
+    },
+    "initConcentrations": {
+        "Carbon1": 10,
+        "Carbon2": 10,
+        "Dext": 0,
+        "Eext": 0,
+        "Fext": 0,
+        "Hext": 0,
+        "Oxygen": 100,
+        "Biomass": 0
+    },
+    "initRegs": {
+        "RPcl": 1
+    },
+    "initGenes": {},
+    "constraints": {
+        "ko": [],
+        "bounds": {
+            "Tc1": [
+                0,
+                10.5
+            ],
+            "Tc2": [
+                0,
+                10.5
+            ],
+            "To2": [
+                0,
+                15
+            ],
+            "Th": [
+                0,
+                5
+            ],
+            "Tf": [
+                0,
+                5
+            ],
+            "Td": [
+                0,
+                12
+            ],
+            "Te": [
+                0,
+                12
+            ]
+        }
+    }
+}

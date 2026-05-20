@@ -1,0 +1,15 @@
+Carbon1, 0
+Hext,    0
+Oxygen,  0
+R2a,     !RPb
+R2b,     0
+R5a,     !RPO2
+R5b,     RPO2
+R7,      !RPb
+R8a,     !RPh
+RPO2,    !Oxygen
+RPb,     R2b
+RPcl,    Carbon1
+RPh,     Hext
+Rres,    !RPO2
+Tc2,     !RPcl

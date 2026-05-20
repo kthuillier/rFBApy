@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rFBApy"
+version = "1.0.0"
+authors = [
+  { name="Kerian Thuillier", email="kerian.thuillier@gmail.com" },
+]
+description = "Small Python Package for Regulatory Flux Balance Analysis Simulation"
+keywords = ["Metabolic Network", "Boolean Network", "Regulatory Flux Balance Analysis", "Simulation"]
+readme = "README.md"
+license = { file = "LICENCE" }
+requires-python = ">=3.10"
+dependencies = [
+  "python-libsbml",
+  "gurobipy",
+  "swiglpk",
+  "bonesis",
+  "pandas",
+]
+
+classifiers = [
+  "Programming Language :: Python :: 3.10",
+  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+  "Operating System :: Unix",
+]
+
+[project.optional-dependencies]
+dev = []
+
+[project.urls]
+Homepage = "https://github.com/kthuillier/rFBApy"
+Repository = "https://github.com/kthuillier/rFBApy/issues"
+
+[project.scripts]
+rFBApy = "rFBApy.__main__:main"
+
+[tool.setuptools.package-data]
+rFBApy = ["py.typed"]
+

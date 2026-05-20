@@ -1,0 +1,480 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml level="3" version="1" fbc:required="false" xmlns="http://www.sbml.org/sbml/level3/version1/core" xmlns:fbc="http://www.sbml.org/sbml/level3/version1/fbc/version2">
+  <model name="Covert2011" id="Covert2011" fbc:strict="true">
+    <listOfUnitDefinitions>
+      <unitDefinition name="mmol_per_gDW_per_hr" id="mmol_per_gDW_per_hr">
+        <listOfUnits>
+          <unit scale="0" kind="gram" multiplier="1" exponent="-1"/>
+          <unit scale="0" kind="second" multiplier="0.00027778" exponent="-1"/>
+          <unit scale="-3" kind="mole" multiplier="1" exponent="1"/>
+        </listOfUnits>
+      </unitDefinition>
+    </listOfUnitDefinitions>
+    <listOfCompartments>
+      <compartment name="ext" constant="true" id="ext" size="1" spatialDimensions="3"/>
+      <compartment name="cell" constant="true" id="cell" size="1" spatialDimensions="3"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species boundaryCondition="false" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="cell" name="A" id="A">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="false" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="cell" name="B" id="B">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="true" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="ext" name="Oxygen" id="Oxygen">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="false" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="cell" name="C" id="C">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="false" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="cell" name="O2" id="O2">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="false" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="cell" name="D" id="D">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="false" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="cell" name="E" id="E">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="false" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="cell" name="F" id="F">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="false" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="cell" name="G" id="G">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="false" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="cell" name="H" id="H">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="true" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="ext" name="Biomass" id="Biomass">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="false" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="cell" name="NADH" id="NADH">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="true" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="ext" name="Carbon1" id="Carbon1">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="true" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="ext" name="Carbon2" id="Carbon2">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="true" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="ext" name="Fext" id="Fext">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="true" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="ext" name="Hext" id="Hext">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="true" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="ext" name="Eext" id="Eext">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="false" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="cell" name="ATP" id="ATP">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+      <species boundaryCondition="true" constant="false" hasOnlySubstanceUnits="false" sboTerm="SBO:0000299" compartment="ext" name="Dext" id="Dext">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CHARGE: 0</p>
+          </body>
+        </notes>
+      </species>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter constant="true" id="UPPER_BOUND_9999" units="mmol_per_gDW_per_hr" value="9999"/>
+      <parameter constant="true" id="LOWER_BOUND_0" units="mmol_per_gDW_per_hr" value="0"/>
+      <parameter constant="true" id="UPPER_BOUND_10_5" units="mmol_per_gDW_per_hr" value="10.5"/>
+      <parameter constant="true" id="UPPER_BOUND_12" units="mmol_per_gDW_per_hr" value="12"/>
+      <parameter constant="true" id="UPPER_BOUND_5" units="mmol_per_gDW_per_hr" value="5"/>
+      <parameter constant="true" id="UPPER_BOUND_15" units="mmol_per_gDW_per_hr" value="15"/>
+    </listOfParameters>
+    <listOfReactions>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_9999" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="R2a" id="R2a">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="B"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="2" constant="true" species="NADH"/>
+          <speciesReference stoichiometry="1" constant="true" species="C"/>
+          <speciesReference stoichiometry="2" constant="true" species="ATP"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_9999" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="R3" id="R3">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="B"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="1" constant="true" species="F"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_9999" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="R4" id="R4">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="C"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="1" constant="true" species="G"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_10_5" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="Tc2" id="Tc2">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="Carbon2"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="1" constant="true" species="A"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_9999" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="R2b" id="R2b">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="C"/>
+          <speciesReference stoichiometry="2" constant="true" species="NADH"/>
+          <speciesReference stoichiometry="2" constant="true" species="ATP"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="1" constant="true" species="B"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_10_5" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="Tc1" id="Tc1">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="Carbon1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="1" constant="true" species="A"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_9999" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="R6" id="R6">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="C"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="3" constant="true" species="D"/>
+          <speciesReference stoichiometry="2" constant="true" species="ATP"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_9999" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="R7" id="R7">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="C"/>
+          <speciesReference stoichiometry="4" constant="true" species="NADH"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="3" constant="true" species="E"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_9999" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="Growth" id="Growth">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="H"/>
+          <speciesReference stoichiometry="1" constant="true" species="C"/>
+          <speciesReference stoichiometry="10" constant="true" species="ATP"/>
+          <speciesReference stoichiometry="1" constant="true" species="F"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="1" constant="true" species="Biomass"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_9999" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="Rres" id="Rres">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="NADH"/>
+          <speciesReference stoichiometry="1" constant="true" species="O2"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="1" constant="true" species="ATP"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_12" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="Td" id="Td">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="D"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="1" constant="true" species="Dext"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_12" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="Te" id="Te">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="E"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="1" constant="true" species="Eext"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_5" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="Tf" id="Tf">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="Fext"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="1" constant="true" species="F"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_5" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="Th" id="Th">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="Hext"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="1" constant="true" species="H"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_15" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="To2" id="To2">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="Oxygen"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="1" constant="true" species="O2"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_9999" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="R8a" id="R8a">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="2" constant="true" species="NADH"/>
+          <speciesReference stoichiometry="1" constant="true" species="ATP"/>
+          <speciesReference stoichiometry="1" constant="true" species="G"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="1" constant="true" species="H"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_9999" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="R8b" id="R8b">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="H"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="2" constant="true" species="NADH"/>
+          <speciesReference stoichiometry="1" constant="true" species="ATP"/>
+          <speciesReference stoichiometry="1" constant="true" species="G"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_9999" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="R5b" id="R5b">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="G"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="0.8" constant="true" species="C"/>
+          <speciesReference stoichiometry="2" constant="true" species="NADH"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_9999" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="R1" id="R1">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="A"/>
+          <speciesReference stoichiometry="1" constant="true" species="ATP"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="1" constant="true" species="B"/>
+        </listOfProducts>
+      </reaction>
+      <reaction fbc:upperFluxBound="UPPER_BOUND_9999" fast="false" fbc:lowerFluxBound="LOWER_BOUND_0" reversible="false" name="R5a" id="R5a">
+        <notes>
+          <body xmlns="http://www.w3.org/1999/xhtml">
+            <p>CONFIDENCE SCORE: NA</p>
+            <p>AUTHORS: </p>
+            <p>GENE_ASSOCIATION: </p>
+          </body>
+        </notes>
+        <listOfReactants>
+          <speciesReference stoichiometry="1" constant="true" species="G"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference stoichiometry="0.8" constant="true" species="C"/>
+          <speciesReference stoichiometry="2" constant="true" species="NADH"/>
+        </listOfProducts>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>
