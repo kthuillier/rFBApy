@@ -36,7 +36,7 @@ def update_regulatory_state(
     x: dict[str, int],
 ) -> dict[str, int]:
     mext_state = {m: 0 if w.get(m, 0) == 0 else 1 for m in mn.metabolites(True, False)}
-    r_state = {r: 0 for r in mn.reactions() if v.get(r, 0) == 0 and r in bn}
+    r_state = {r: 0 for r in mn.reactions() if v.get(r, 0) == 0}
     next_bn = bn(x | mext_state | r_state) | mext_state
     return next_bn
 
@@ -274,6 +274,7 @@ def simulate_rfba(
         x: dict[str, int] = bn(
             {n: 0 for n in bn.keys() if n not in mn.metabolites(True, False)}
             | {n: 1 if w.get(n, 0) > 0 else 0 for n in mn.metabolites(True, False)}
+            | {n: 0 for n in mn.reactions()}
             | state
         )
     else:
