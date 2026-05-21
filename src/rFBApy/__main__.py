@@ -31,13 +31,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--bnet", "-bn",
-        type=str,
-        required=True,
-        help="Path to Boolean regulatory network",
-    )
-
-    parser.add_argument(
         "--obj",
         type=str,
         required=True,
@@ -61,6 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
     # ------------------------------------------------------------------
     # Optional
     # ------------------------------------------------------------------
+    parser.add_argument(
+        "--bnet", "-bn",
+        type=str,
+        default=None,
+        help="Path to Boolean regulatory network",
+    )
 
     parser.add_argument(
         "--compressed",
