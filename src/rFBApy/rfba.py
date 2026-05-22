@@ -84,11 +84,13 @@ def update_bounds(
         r: str | None = mn.exchange(t)
         assert r is not None
         s_tr: float = mn.stoichiometry()[(t, r)]
-        if s_tr == 1:
-            continue
         lb, ub = mn.bound(r)
-        low_bound: float = lb
-        up_bound: float = min(ub, max((w[t] / (tau * biomass)), 0))
+        if s_tr < 0:
+            low_bound: float = lb
+            up_bound: float = min(ub, max((w[t] / (tau * biomass)), 0))
+        else:
+            low_bound: float = max(lb, min(-(w[t] / (tau * biomass)), 0))
+            up_bound: float = ub
         updated_bounds[r] = (low_bound, up_bound)
     return updated_bounds
 
@@ -108,10 +110,14 @@ def estimate_metabolite_depletion_ts(
     r: str | None = mn.exchange(m)
     assert r is not None
     s_mr: float = mn.stoichiometry()[(m, r)]
-    if (s_mr >= 0) or (v[r] == 0) or (v[obj] == 0):
+    if (v[r] == 0) or (v[obj] == 0):
+        return inf  # type: ignore
+    if (v[r] < 0 and s_mr < 0):
+        return inf  # type: ignore
+    if (v[r] > 0 and s_mr > 0):
         return inf  # type: ignore
     return floor(
-        log(1 - ((w[m] * v["Growth"]) / (s_mr * v[r] * biomass))) / (v["Growth"] * tau)
+        log(1 - ((w[m] * v[obj]) / (s_mr * v[r] * biomass))) / (v[obj] * tau)
     )
 
 
@@ -189,7 +195,6 @@ def next_iter(
         duration,
     )
     next_x: dict[str, int] = {}
-
     bounds: dict[str, tuple[float, float]] = update_bounds(
         mn,
         tau,
@@ -199,7 +204,11 @@ def next_iter(
     if bn is not None:
         next_x = update_regulatory_state(mn, bn, next_w, v, x)
         bounds |= {n: (0.0, 0.0) for n in bn if n in mn.reactions() and next_x[n] == 0}
-    _, next_v = fba.solve(bounds)
+
+    opt, next_v = fba.solve(bounds)
+    if opt is None or opt < 0:  # FIXME
+        opt = 0.
+        next_v = {r: 0. for r in mn.reactions()}
 
     next_duration: int = estimate_state_duration(
         mn,
@@ -237,12 +246,14 @@ def simulate_rfba(
         mn: MetabolicNetwork = sbml
     else:
         mn: MetabolicNetwork = MetabolicNetwork.read_sbml(sbml)
+
     if isinstance(bnet, BooleanNetwork):
         bn: BooleanNetwork | None = bnet
     elif bnet is not None:
         bn: BooleanNetwork | None = BooleanNetwork.load(bnet)
     else:
         bn: BooleanNetwork | None = None
+
     fba: FluxBalanceAnalysis = mn.instantiate_fba(obj, lpsolver=lpsolver)
 
     # ~ Experiment bounds
