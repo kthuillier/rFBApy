@@ -36,7 +36,7 @@ def update_regulatory_state(
     x: dict[str, int],
 ) -> dict[str, int]:
     mext_state = {m: 0 if w.get(m, 0) == 0 else 1 for m in mn.metabolites(True, False)}
-    r_state = {r: 0 for r in mn.reactions() if v.get(r, 0) == 0}
+    r_state = {r: v.get(r, 0) == 0 for r in mn.reactions()}
     next_bn = bn(x | mext_state | r_state) | mext_state
     return next_bn
 
