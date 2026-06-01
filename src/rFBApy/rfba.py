@@ -108,6 +108,8 @@ def estimate_metabolite_depletion_ts(
     w: dict[str, float],
     v: dict[str, float],
 ) -> int:
+    if w[m] == 0:
+        return inf  # type: ignore
     r: str | None = mn.exchange(m)
     assert r is not None
     s_mr: float = mn.stoichiometry()[(m, r)]
@@ -131,7 +133,7 @@ def estimate_mn_state_duration_ts(
     v: dict[str, float],
 ) -> int:
     return min(
-        estimate_metabolite_depletion_ts(mn, obj, m, tau, biomass, w, v) for m in w
+        estimate_metabolite_depletion_ts(mn, obj, m, tau, biomass, w, v) for m in w if w[m] != 0
     )
 
 
