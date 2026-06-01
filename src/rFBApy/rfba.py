@@ -7,6 +7,7 @@ from math import exp, floor, inf, log
 
 import pandas as pd  # type: ignore
 from bonesis import BooleanNetwork  # type: ignore
+from networkx import MultiDiGraph
 
 from rFBApy.fba import FluxBalanceAnalysis, DEFAULT_SOLVER
 
@@ -265,12 +266,23 @@ def simulate_rfba(
 
     if bn is not None:
         # ~ Add gene association rules and missing genes to BN
+        missing_cst_1: set[str] = set()
         for gene, rule in mn.genes_association().items():
             if rule != "":
                 bn[gene] = rule
         for gene in mn.genes():
             if gene not in bn:
-                bn[gene] = 1
+                missing_cst_1.add(gene)
+        
+        # ~ Special case: missing regulatory rule constant
+        g: MultiDiGraph = bn.influence_graph()
+        for n in bn:
+            for pred in g.predecessors(n):
+                if pred not in bn:
+                    missing_cst_1.add(pred)
+
+        for gene in missing_cst_1:
+            bn[gene] = 1
 
         # ~ Experiment mutations
         for n, val in mutations.items():
@@ -280,7 +292,7 @@ def simulate_rfba(
     # Simulation
     # --------------------------------------------------------------------------
     v: dict[str, float] = {r: 0.0 for r in mn.reactions()}
-    w: dict[str, float] = concentrations.copy()
+    w: dict[str, float] = {m: 0.0 for m in mn.metabolites(True, False)} | concentrations.copy()
     if bn is not None:
         x: dict[str, int] = bn(
             {n: 0 for n in bn.keys() if n not in mn.metabolites(True, False)}
