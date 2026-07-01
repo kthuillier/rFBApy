@@ -95,6 +95,7 @@ def load_experiment(path: str) -> dict:
         "genes": exp.get("initGenes", {}),
         "mutations": {ko: 0 for ko in constraints.get("ko", [])},
         "bounds": {r: tuple(v) for r, v in constraints.get("bounds", {}).items()},
+        "settings": exp.get("settings", {}),
     }
 
 
@@ -112,6 +113,7 @@ def parse_args():
         "state": exp["state"],
         "bounds": exp["bounds"],
         "mutations": exp["mutations"],
+        "settings": exp["settings"],
         "biomass": exp["biomass"],
         "tau": exp["tau"],
         "iter": exp["iter"],
@@ -135,6 +137,7 @@ def main() -> None:
         state=args["state"],
         bounds=args["bounds"],
         mutations=args["mutations"],
+        settings=args["settings"],
         biomass=args["biomass"],
         tau=args["tau"],
         iter=args["iter"],

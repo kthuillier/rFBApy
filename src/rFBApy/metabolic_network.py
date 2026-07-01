@@ -107,7 +107,7 @@ class MetabolicNetwork:
     # Setters
     # ==========================================================================
     def set_bound(self: MetabolicNetwork, r: str, lb: float, ub: float) -> None:
-        for r_ in self.__reversible_reactions_mapping.get(r, [r]):
+        for r_ in self.__reversible_reactions_mapping.get(r, (r,)):
             assert r_ in self.__bounds
             self.__bounds[r_] = (lb, ub)
 

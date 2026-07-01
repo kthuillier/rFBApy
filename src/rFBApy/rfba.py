@@ -6,14 +6,11 @@ from __future__ import annotations
 from math import exp, floor, inf, log
 
 import pandas as pd  # type: ignore
-from bonesis import BooleanNetwork  # type: ignore
-from networkx import MultiDiGraph
-
-from rFBApy.fba import FluxBalanceAnalysis, DEFAULT_SOLVER
 
 # ~ Custom modules
+from rFBApy.fba import DEFAULT_SOLVER, FluxBalanceAnalysis
 from rFBApy.metabolic_network import MetabolicNetwork
-
+from rFBApy.regulatory_network import RegulatoryNetwork
 
 # ==============================================================================
 # Global
@@ -31,14 +28,15 @@ TAG_REGULATION: str = "(state)"
 # ------------------------------------------------------------------------------
 def update_regulatory_state(
     mn: MetabolicNetwork,
-    bn: BooleanNetwork,
+    bn: RegulatoryNetwork,
     w: dict[str, float],
     v: dict[str, float],
     x: dict[str, int],
+    settings: dict[str, int | bool | float] = {},
 ) -> dict[str, int]:
-    mext_state = {m: 0 if w.get(m, 0) == 0 else 1 for m in mn.metabolites(True, False)}
-    r_state = {r: 0 if v.get(r, 0) == 0 else 1 for r in mn.reactions()}
-    next_bn = bn(x | mext_state | r_state) | mext_state
+    mext_state = {m: w.get(m, 0) for m in mn.metabolites(True, False)}
+    r_state = {r: v.get(r, 0) for r in mn.reactions()}
+    next_bn = bn(x | mext_state | r_state | settings)  # type: ignore
     return next_bn
 
 
@@ -99,53 +97,67 @@ def update_bounds(
 # ------------------------------------------------------------------------------
 # Time Step Controller
 # ------------------------------------------------------------------------------
-def estimate_metabolite_depletion_ts(
+def estimate_metabolite_threshold_crossing_ts(
     mn: MetabolicNetwork,
     obj: str,
     m: str,
     tau: float,
     biomass: float,
+    b: float,
     w: dict[str, float],
     v: dict[str, float],
 ) -> int:
-    if w[m] == 0:
-        return inf  # type: ignore
+    if w[m] == b:
+        return inf  # type: ignore  # déjà sur la borne
+
     r: str | None = mn.exchange(m)
     assert r is not None
     s_mr: float = mn.stoichiometry()[(m, r)]
+
     if (v[r] == 0) or (v[obj] == 0):
-        return inf  # type: ignore
-    if (v[r] < 0 and s_mr < 0):
-        return inf  # type: ignore
-    if (v[r] > 0 and s_mr > 0):
-        return inf  # type: ignore
-    return floor(
-        log(1 - ((w[m] * v[obj]) / (s_mr * v[r] * biomass))) / (v[obj] * tau)
-    )
+        return inf  # type: ignore  # flux ou croissance nul -> pas de croisement
+
+    direction = s_mr * v[r]  # signe de dW/dt (à un facteur biomass>0 près)
+
+    if w[m] < b and direction <= 0:
+        return inf  # type: ignore  # ne montera jamais au-dessus de b
+    if w[m] > b and direction >= 0:
+        return inf  # type: ignore  # ne descendra jamais sous b
+
+    arg = 1 + ((b - w[m]) * v[obj]) / (s_mr * v[r] * biomass)
+    if arg <= 0:
+        return inf  # type: ignore  # asymptote : borne jamais atteinte
+
+    return floor(log(arg) / (v[obj] * tau))
 
 
 def estimate_mn_state_duration_ts(
     mn: MetabolicNetwork,
+    thresholds: set[tuple[str, float]],
     obj: str,
     biomass: float,
     tau: float,
     w: dict[str, float],
     v: dict[str, float],
 ) -> int:
+    thresholds = thresholds.union((m, 0.0) for m in mn.metabolites(True, False))
     return min(
-        estimate_metabolite_depletion_ts(mn, obj, m, tau, biomass, w, v) for m in w if w[m] != 0
+        estimate_metabolite_threshold_crossing_ts(mn, obj, m, tau, biomass, b, w, v)
+        for m, b in thresholds
+        if m in mn.metabolites(True, False)  # type: ignore
     )
 
 
 def estimate_state_duration(
     mn: MetabolicNetwork,
-    bn: BooleanNetwork | None,
+    bn: RegulatoryNetwork | None,
     tau: float,
     biomass: float,
     x: dict[str, int],
     v: dict[str, float],
     w: dict[str, float],
     obj: str,
+    settings: dict[str, int | bool | float] = {},
 ) -> int:
     biomass_plus_1: float = update_biomass(tau, biomass, v[obj], k=1)
     w_plus_1: dict[str, float] = update_kinetics(
@@ -165,10 +177,15 @@ def estimate_state_duration(
             w_plus_1,
             v,
             x,
+            settings=settings,
         )
     if x != x_plus_1:
         return 1
-    return max(1, estimate_mn_state_duration_ts(mn, obj, biomass, tau, w, v))
+
+    bounds: set[tuple[str, float]] = set() if bn is None else bn.thresholds  # type: ignore
+    return max(
+        1, estimate_mn_state_duration_ts(mn, bounds, obj, biomass, tau, w, v)
+    )
 
 
 # ==============================================================================
@@ -176,7 +193,7 @@ def estimate_state_duration(
 # ==============================================================================
 def next_iter(
     mn: MetabolicNetwork,
-    bn: BooleanNetwork | None,
+    bn: RegulatoryNetwork | None,
     fba: FluxBalanceAnalysis,
     obj: str,
     tau: float,
@@ -185,6 +202,7 @@ def next_iter(
     x: dict[str, int],
     biomass: float,
     duration: int,
+    settings: dict[str, bool | int | float] = {},
 ) -> tuple[dict[str, float], dict[str, float], dict[str, int], float, int]:
     next_biomass: float = update_biomass(tau, biomass, v[obj], duration)
 
@@ -205,13 +223,13 @@ def next_iter(
         next_w,
     )
     if bn is not None:
-        next_x = update_regulatory_state(mn, bn, next_w, v, x)
+        next_x = update_regulatory_state(mn, bn, next_w, v, x, settings)
         bounds |= {n: (0.0, 0.0) for n in bn if n in mn.reactions() and next_x[n] == 0}
 
     opt, next_v = fba.solve(bounds)
     if opt is None or opt < 0:  # FIXME
-        opt = 0.
-        next_v = {r: 0. for r in mn.reactions()}
+        opt = 0.0
+        next_v = {r: 0.0 for r in mn.reactions()}
 
     next_duration: int = estimate_state_duration(
         mn,
@@ -222,6 +240,7 @@ def next_iter(
         next_v,
         next_w,
         obj,
+        settings=settings,
     )
 
     return (next_v, next_w, next_x, next_biomass, next_duration)
@@ -230,11 +249,12 @@ def next_iter(
 def simulate_rfba(
     sbml: str | MetabolicNetwork,
     obj: str,
-    bnet: str | BooleanNetwork | None = None,
+    bnet: str | RegulatoryNetwork | None = None,
     concentrations: dict[str, float] = {},
     state: dict[str, int] = {},
     bounds: dict[str, tuple[float, float]] = {},
     mutations: dict[str, int] = {},
+    settings: dict[str, bool | int | float] = {},
     biomass: float = 1e-2,
     tau: float = 1e-2,
     iter: int = 100,
@@ -250,12 +270,12 @@ def simulate_rfba(
     else:
         mn: MetabolicNetwork = MetabolicNetwork.read_sbml(sbml)
 
-    if isinstance(bnet, BooleanNetwork):
-        bn: BooleanNetwork | None = bnet
+    if isinstance(bnet, RegulatoryNetwork):
+        bn: RegulatoryNetwork | None = bnet
     elif bnet is not None:
-        bn: BooleanNetwork | None = BooleanNetwork.load(bnet)
+        bn: RegulatoryNetwork | None = RegulatoryNetwork.load_bnet(bnet)
     else:
-        bn: BooleanNetwork | None = None
+        bn: RegulatoryNetwork | None = None
 
     fba: FluxBalanceAnalysis = mn.instantiate_fba(obj, lpsolver=lpsolver)
 
@@ -264,7 +284,7 @@ def simulate_rfba(
         mn.set_bound(r, lb, ub)
 
     if len(mutations) != 0 and bn is None:
-        bn = BooleanNetwork()
+        bn = RegulatoryNetwork()
 
     if bn is not None:
         # ~ Add gene association rules and missing genes to BN
@@ -275,32 +295,36 @@ def simulate_rfba(
         for gene in mn.genes():
             if gene not in bn:
                 missing_cst_1.add(gene)
-        
-        # ~ Special case: missing regulatory rule constant
-        g: MultiDiGraph = bn.influence_graph()
-        for n in bn:
-            for pred in g.predecessors(n):
-                if pred not in bn:
-                    missing_cst_1.add(pred)
 
-        for gene in missing_cst_1:
+        # ~ Special case: missing regulatory rule constant
+        undefined_gene: frozenset[str] = bn.undefined.difference(
+            mn.metabolites(True, False)
+            .union(mn.reactions())
+            .union(settings.keys())
+            .union(n for n, _ in bn.thresholds)
+        )
+        for gene in undefined_gene:
             bn[gene] = 1
 
         # ~ Experiment mutations
         for n, val in mutations.items():
-            bn[n] = f"{val}"
+            bn[n] = val
 
     # --------------------------------------------------------------------------
     # Simulation
     # --------------------------------------------------------------------------
     v: dict[str, float] = {r: 0.0 for r in mn.reactions()}
-    w: dict[str, float] = {m: 0.0 for m in mn.metabolites(True, False)} | concentrations.copy()
+    w: dict[str, float] = {
+        m: 0.0 for m in mn.metabolites(True, False)
+    } | concentrations.copy()
     if bn is not None:
         x: dict[str, int] = bn(
-            {n: 0 for n in bn.keys() if n not in mn.metabolites(True, False)}
+            {n: 0 for n in bn if n not in mn.metabolites(True, False)}
             | {n: 1 if w.get(n, 0) > 0 else 0 for n in mn.metabolites(True, False)}
             | {n: 0 for n in mn.reactions()}
-            | state
+            | state  # type: ignore
+            | mutations
+            | settings
         )
     else:
         x: dict[str, int] = {}
@@ -329,6 +353,7 @@ def simulate_rfba(
             x_0,
             biomass_0,
             duration_0,
+            settings=settings,
         )
         if i + duration_1 >= iter + 1:
             diff_i_iter = iter + 1 - i
@@ -342,9 +367,7 @@ def simulate_rfba(
     met_cols: dict[str, str] = {
         m: f"{m} {TAG_METABOLITE}" for m in mn.metabolites(True, False)
     }
-    react_cols: dict[str, str] = {
-        r: f"{r} {TAG_REACTION}" for r in mn.reactions()
-    }
+    react_cols: dict[str, str] = {r: f"{r} {TAG_REACTION}" for r in mn.reactions()}
     reg_cols: dict[str, str] = {}
     if bn is not None:
         reg_cols |= {

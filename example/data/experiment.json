@@ -20,6 +20,7 @@
         "RPcl": 1
     },
     "initGenes": {},
+    "settings": {},
     "constraints": {
         "ko": [],
         "bounds": {

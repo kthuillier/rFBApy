@@ -17,8 +17,8 @@ dependencies = [
   "python-libsbml",
   "gurobipy",
   "swiglpk",
-  "bonesis",
   "pandas",
+  "lark",
 ]
 
 classifiers = [
