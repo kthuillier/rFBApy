@@ -140,11 +140,12 @@ def estimate_mn_state_duration_ts(
     w: dict[str, float],
     v: dict[str, float],
 ) -> int:
-    thresholds = thresholds.union((m, 0.0) for m in mn.metabolites(True, False))
+    metabolites: set[str] = mn.metabolites(True, False)
+    thresholds = thresholds.union((m, 0.0) for m in metabolites)
     return min(
         estimate_metabolite_threshold_crossing_ts(mn, obj, m, tau, biomass, b, w, v)
         for m, b in thresholds
-        if m in mn.metabolites(True, False)  # type: ignore
+        if m in metabolites
     )
 
 
@@ -288,23 +289,29 @@ def simulate_rfba(
 
     if bn is not None:
         # ~ Add gene association rules and missing genes to BN
-        missing_cst_1: set[str] = set()
         for gene, rule in mn.genes_association().items():
             if rule != "":
                 bn[gene] = rule
         for gene in mn.genes():
             if gene not in bn:
-                missing_cst_1.add(gene)
+                bn[gene] = 1
+
+        for m in mn.metabolites(True, False):
+            bn[m] = 0
 
         # ~ Special case: missing regulatory rule constant
         undefined_gene: frozenset[str] = bn.undefined.difference(
             mn.metabolites(True, False)
             .union(mn.reactions())
             .union(settings.keys())
-            .union(n for n, _ in bn.thresholds)
         )
+        thresholds: set[str] = {n for n, _ in bn.thresholds}
         for gene in undefined_gene:
-            bn[gene] = 1
+            if gene in thresholds:
+                bn[gene] = 0
+            else:
+                print(f"Warning: {gene} is undefined. Set to 1.")
+                bn[gene] = 1
 
         # ~ Experiment mutations
         for n, val in mutations.items():

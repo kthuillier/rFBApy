@@ -2,51 +2,56 @@
 # Imports
 # ==============================================================================
 from __future__ import annotations
+
 from typing import Any, Literal
-from rFBApy.fba.fba_interface import FluxBalanceAnalysis
 
 # ~ GLPK
 from swiglpk import (  # type: ignore
     GLP_CV,
     GLP_DB,
     GLP_FEAS,
+    GLP_FR,
     GLP_INFEAS,
-    GLP_OPT,
-    GLP_UNBND,
-    glp_set_col_kind,
-    glp_get_col_prim,
-    glp_get_obj_val,
-    glp_set_obj_dir,
-    glp_init_smcp,
+    GLP_LO,
     GLP_MAX,
-    glp_smcp,
     GLP_OFF,
-    glp_term_out,
+    GLP_OPT,
+    GLP_FX,
+    GLP_SF_AUTO,
+    GLP_UNBND,
+    GLP_UP,
+    doubleArray,
+    glp_add_cols,
+    glp_add_rows,
+    glp_adv_basis,
     glp_create_index,
     glp_create_prob,
-    glp_get_num_rows,
+    glp_get_col_prim,
     glp_get_num_cols,
-    glp_set_prob_name,
-    glp_set_obj_coef,
-    glp_simplex,
+    glp_get_num_rows,
+    glp_get_obj_val,
     glp_get_status,
-    glp_add_cols,
-    glp_set_col_name,
-    intArray,
-    glp_add_rows,
-    glp_set_row_name,
-    doubleArray,
-    glp_set_mat_row,
-    glp_set_col_bnds,
-    glp_set_row_bnds,
-    GLP_FR,
-    GLP_UP,
-    GLP_LO,
-    GLP_FX,
-    glp_adv_basis,
+    glp_init_smcp,
     glp_scale_prob,
-    GLP_SF_AUTO
+    glp_set_col_bnds,
+    glp_set_col_kind,
+    glp_set_col_name,
+    glp_set_mat_row,
+    glp_set_obj_coef,
+    glp_set_obj_dir,
+    glp_set_prob_name,
+    glp_set_row_bnds,
+    glp_set_row_name,
+    glp_simplex,
+    glp_unscale_prob,
+    glp_smcp,
+    glp_term_out,
+    intArray,
 )
+
+from rFBApy.fba.fba_interface import FluxBalanceAnalysis
+
+GLPK_TOL: float = 1e-8
 
 # ==============================================================================
 # Flux Balance Analysis - GLPK Implementation
@@ -66,6 +71,10 @@ class GlpkFba(FluxBalanceAnalysis):
         glp_set_obj_dir(self.model, GLP_MAX)
         self.__smcp = glp_smcp()
         glp_init_smcp(self.__smcp)
+        # ~ Tighten tolerances (default GLPK tol_bnd/tol_dj/tol_piv are looser than Gurobi's)
+        self.__smcp.tol_bnd = 1e-8
+        self.__smcp.tol_dj  = 1e-9
+        self.__smcp.tol_piv = 1e-10
         glp_term_out(GLP_OFF)
 
         # ----------------------------------------------------------------------
@@ -148,7 +157,9 @@ class GlpkFba(FluxBalanceAnalysis):
         return 'undefined'
 
     def _lpsolve(self: GlpkFba) -> None | float:
+        glp_unscale_prob(self.model)
         glp_scale_prob(self.model, GLP_SF_AUTO)
+        glp_adv_basis(self.model, 0)   # toujours, pas seulement si 'undefined'
         status: Literal['optimal', 'infeasible', 'undefined', 'unbounded'] = \
             self.__lpsolve_glpk()
         # For GLPK: reset the basis and resolved if status is undefined
@@ -166,4 +177,6 @@ class GlpkFba(FluxBalanceAnalysis):
         state: dict[str, float] = {}
         for r, v_idx in self.__variables.items():
             state[r] = glp_get_col_prim(self.model, v_idx)
+            if abs(state[r]) < GLPK_TOL:
+                state[r] = 0
         return state

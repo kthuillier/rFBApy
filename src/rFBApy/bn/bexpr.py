@@ -172,6 +172,7 @@ class OrExpr(BoolExpr):
         self._vars = None
         self._signed_vars = None
         self._threshold = None
+        self._hash = None
 
     def compile(self: OrExpr) -> Callable[[dict[str, bool | int | float]], bool]:
         subfns = [x.compile() for x in self.items]

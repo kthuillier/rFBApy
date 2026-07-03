@@ -147,6 +147,13 @@ class RegulatoryNetwork:
         # ~ Output -------------------------------------------------------------
         return rn
 
+    # --------------------------------------------------------------------------
+    # SBML-Qual
+    # --------------------------------------------------------------------------
+    @staticmethod
+    def load_sbml(sbml: str) -> RegulatoryNetwork:
+        raise NotImplementedError()
+
     # ==========================================================================
     # Export
     # ==========================================================================
@@ -159,17 +166,4 @@ class RegulatoryNetwork:
 # Main
 # ==============================================================================
 if __name__ == "__main__":
-    bnet: str = "example/data/regulatory_network.bnet"
-    bn: RegulatoryNetwork = RegulatoryNetwork.load_bnet(bnet)
-    context = {
-        "Carbon1": 10.0,
-        "Oxygen": 100.0,
-        "Hext": 0.,
-        "R2b": 0.,
-        "RPcl": True,
-        "RPO2": True,
-        "RPb": True,
-        "RPh": 1,     
-    }
-    print(bn)
-    print(bn(context))
+    ...
