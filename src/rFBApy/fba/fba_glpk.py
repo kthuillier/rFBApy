@@ -44,6 +44,7 @@ from swiglpk import (  # type: ignore
     glp_set_row_name,
     glp_simplex,
     glp_unscale_prob,
+    glp_std_basis,
     glp_smcp,
     glp_term_out,
     intArray,
@@ -72,9 +73,6 @@ class GlpkFba(FluxBalanceAnalysis):
         self.__smcp = glp_smcp()
         glp_init_smcp(self.__smcp)
         # ~ Tighten tolerances (default GLPK tol_bnd/tol_dj/tol_piv are looser than Gurobi's)
-        self.__smcp.tol_bnd = 1e-8
-        self.__smcp.tol_dj  = 1e-9
-        self.__smcp.tol_piv = 1e-10
         glp_term_out(GLP_OFF)
 
         # ----------------------------------------------------------------------
@@ -146,7 +144,10 @@ class GlpkFba(FluxBalanceAnalysis):
     # --------------------------------------------------------------------------
     def __lpsolve_glpk(self: GlpkFba) \
             -> Literal['optimal', 'infeasible', 'undefined', 'unbounded']:
-        glp_simplex(self.model, self.__smcp)
+        smcp = glp_smcp()
+        glp_init_smcp(smcp)
+        glp_std_basis(self.model)
+        glp_simplex(self.model, smcp)
         glpk_status: int = glp_get_status(self.model)
         if glpk_status in [GLP_OPT, GLP_FEAS]:
             return 'optimal'
@@ -177,6 +178,4 @@ class GlpkFba(FluxBalanceAnalysis):
         state: dict[str, float] = {}
         for r, v_idx in self.__variables.items():
             state[r] = glp_get_col_prim(self.model, v_idx)
-            if abs(state[r]) < GLPK_TOL:
-                state[r] = 0
         return state

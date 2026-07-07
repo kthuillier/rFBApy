@@ -27,7 +27,6 @@ _OPS_NEG: dict[str, str] = {
     "!=": "==",
 }
 
-
 # ==============================================================================
 # AST for Boolean Rules with Thresholds
 # ==============================================================================
@@ -387,7 +386,10 @@ class ThresholdExpr(BoolExpr):
         )
 
     def __call__(self: ThresholdExpr, context: dict[str, bool | int | float]) -> bool:
-        return _OPS[self.op](context[self.variable.name], self.value)
+        var = self.variable.name
+        opfn = _OPS[self.op]
+        val = self.value
+        return opfn(context[var], val)
 
     def __str__(self: ThresholdExpr) -> str:
         return f"[{str(self.variable)} {self.op} {str(self.value)}]"

@@ -19,7 +19,6 @@ TAG_METABOLITE: str = "(met)"
 TAG_REACTION: str = "(reaction)"
 TAG_REGULATION: str = "(state)"
 
-
 # ==============================================================================
 # Auxiliary Functions
 # ==============================================================================
@@ -34,8 +33,14 @@ def update_regulatory_state(
     x: dict[str, int],
     settings: dict[str, int | bool | float] = {},
 ) -> dict[str, int]:
-    mext_state = {m: w.get(m, 0) for m in mn.metabolites(True, False)}
-    r_state = {r: v.get(r, 0) for r in mn.reactions()}
+    mext_state = {
+        m: w.get(m, 0)
+        for m in mn.metabolites(True, False)
+    }
+    r_state = {
+        r: v.get(r, 0)
+        for r in mn.reactions()
+    }
     next_bn = bn(x | mext_state | r_state | settings)  # type: ignore
     return next_bn
 
@@ -284,7 +289,7 @@ def simulate_rfba(
     for r, (lb, ub) in bounds.items():
         mn.set_bound(r, lb, ub)
 
-    if len(mutations) != 0 and bn is None:
+    if (len(mutations) != 0 or len(mn.genes_association()) != 0) and bn is None:
         bn = RegulatoryNetwork()
 
     if bn is not None:
