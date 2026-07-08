@@ -43,8 +43,7 @@ from swiglpk import (  # type: ignore
     glp_set_row_bnds,
     glp_set_row_name,
     glp_simplex,
-    glp_unscale_prob,
-    glp_std_basis,
+    glp_exact,
     glp_smcp,
     glp_term_out,
     intArray,
@@ -144,10 +143,8 @@ class GlpkFba(FluxBalanceAnalysis):
     # --------------------------------------------------------------------------
     def __lpsolve_glpk(self: GlpkFba) \
             -> Literal['optimal', 'infeasible', 'undefined', 'unbounded']:
-        smcp = glp_smcp()
-        glp_init_smcp(smcp)
-        glp_std_basis(self.model)
-        glp_simplex(self.model, smcp)
+        glp_simplex(self.model, self.__smcp)
+        glp_exact(self.model, None)
         glpk_status: int = glp_get_status(self.model)
         if glpk_status in [GLP_OPT, GLP_FEAS]:
             return 'optimal'
@@ -158,7 +155,6 @@ class GlpkFba(FluxBalanceAnalysis):
         return 'undefined'
 
     def _lpsolve(self: GlpkFba) -> None | float:
-        glp_unscale_prob(self.model)
         glp_scale_prob(self.model, GLP_SF_AUTO)
         glp_adv_basis(self.model, 0)   # toujours, pas seulement si 'undefined'
         status: Literal['optimal', 'infeasible', 'undefined', 'unbounded'] = \

@@ -19,6 +19,8 @@ TAG_METABOLITE: str = "(met)"
 TAG_REACTION: str = "(reaction)"
 TAG_REGULATION: str = "(state)"
 
+ACCURACY: float = 1e-8
+
 # ==============================================================================
 # Auxiliary Functions
 # ==============================================================================
@@ -84,17 +86,20 @@ def update_bounds(
     w: dict[str, float],
 ) -> dict[str, tuple[float, float]]:
     updated_bounds: dict[str, tuple[float, float]] = {}
-    for t in mn.metabolites(external=True, internal=False):
-        r: str | None = mn.exchange(t)
+    for m in mn.metabolites(external=True, internal=False):
+        r: str | None = mn.exchange(m)
         assert r is not None
-        s_tr: float = mn.stoichiometry()[(t, r)]
+        s_tr: float = mn.stoichiometry()[(m, r)]
         lb, ub = mn.bound(r)
+        max_rate: float = max(w[m] / (tau * biomass), 0)
+
         if s_tr < 0:
             low_bound: float = lb
-            up_bound: float = min(ub, max((w[t] / (tau * biomass)), 0))
+            up_bound: float = min(ub, max_rate)
         else:
-            low_bound: float = max(lb, min(-(w[t] / (tau * biomass)), 0))
+            low_bound: float = max(lb, -max_rate)
             up_bound: float = ub
+
         updated_bounds[r] = (low_bound, up_bound)
     return updated_bounds
 
@@ -232,10 +237,17 @@ def next_iter(
         next_x = update_regulatory_state(mn, bn, next_w, v, x, settings)
         bounds |= {n: (0.0, 0.0) for n in bn if n in mn.reactions() and next_x[n] == 0}
 
+    
     opt, next_v = fba.solve(bounds)
     if opt is None or opt < 0:  # FIXME
         opt = 0.0
         next_v = {r: 0.0 for r in mn.reactions()}
+    else:
+        opt = opt if abs(opt) > ACCURACY else 0.0
+        next_v = {
+            r: vr if abs(vr) > ACCURACY else 0.0
+            for r, vr in next_v.items()
+        }
 
     next_duration: int = estimate_state_duration(
         mn,
@@ -287,7 +299,8 @@ def simulate_rfba(
 
     # ~ Experiment bounds
     for r, (lb, ub) in bounds.items():
-        mn.set_bound(r, lb, ub)
+        if r in mn.reactions():
+            mn.set_bound(r, lb, ub)
 
     if (len(mutations) != 0 or len(mn.genes_association()) != 0) and bn is None:
         bn = RegulatoryNetwork()
@@ -327,8 +340,8 @@ def simulate_rfba(
     # --------------------------------------------------------------------------
     v: dict[str, float] = {r: 0.0 for r in mn.reactions()}
     w: dict[str, float] = {
-        m: 0.0 for m in mn.metabolites(True, False)
-    } | concentrations.copy()
+        m: concentrations.get(m, 0.0) for m in mn.metabolites(True, False)
+    }
     if bn is not None:
         x: dict[str, int] = bn(
             {n: 0 for n in bn if n not in mn.metabolites(True, False)}
@@ -405,8 +418,13 @@ def simulate_rfba(
                 }
                 | {met_cols[m]: w_i[m] for m in w_i}
                 | {react_cols[r]: v_0[r] for r in v_0}
-                | {reg_cols[n]: x_0[n] for n in x_0 if n not in mn.metabolites()}
             )
+            if bn is not None:
+                state_i |= {
+                    reg_cols[n]: x_0[n]
+                    for n in x_0
+                    if n not in mn.metabolites()
+                }
             sim.append(state_i)
 
         iter_ += duration_0
@@ -415,7 +433,7 @@ def simulate_rfba(
         "Time",
         *sorted(met_cols.values()),
         *sorted(react_cols.values()),
-        *sorted(reg_cols.values()),
+        *(sorted(reg_cols.values()) if bn is not None else []),
         "biomass",
     ]
     sim_df: pd.DataFrame = pd.DataFrame(sim, columns=cols)
