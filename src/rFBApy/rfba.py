@@ -32,9 +32,9 @@ def update_regulatory_state(
     bn: RegulatoryNetwork,
     w: dict[str, float],
     v: dict[str, float],
-    x: dict[str, int],
+    x: dict[str, int | None],
     settings: dict[str, int | bool | float] = {},
-) -> dict[str, int]:
+) -> dict[str, int | None]:
     mext_state = {
         m: w.get(m, 0)
         for m in mn.metabolites(True, False)
@@ -164,7 +164,7 @@ def estimate_state_duration(
     bn: RegulatoryNetwork | None,
     tau: float,
     biomass: float,
-    x: dict[str, int],
+    x: dict[str, int | None],
     v: dict[str, float],
     w: dict[str, float],
     obj: str,
@@ -180,7 +180,7 @@ def estimate_state_duration(
         v,
         k=1,
     )
-    x_plus_1: dict[str, int] = {}
+    x_plus_1: dict[str, int | None] = {}
     if bn is not None:
         x_plus_1 = update_regulatory_state(
             mn,
@@ -210,11 +210,12 @@ def next_iter(
     tau: float,
     v: dict[str, float],
     w: dict[str, float],
-    x: dict[str, int],
+    x: dict[str, int | None],
     biomass: float,
     duration: int,
     settings: dict[str, bool | int | float] = {},
-) -> tuple[dict[str, float], dict[str, float], dict[str, int], float, int]:
+    lpeps: float = ACCURACY,
+) -> tuple[dict[str, float], dict[str, float], dict[str, int | None], float, int]:
     next_biomass: float = update_biomass(tau, biomass, v[obj], duration)
 
     next_w: dict[str, float] = update_kinetics(
@@ -226,7 +227,7 @@ def next_iter(
         v,
         duration,
     )
-    next_x: dict[str, int] = {}
+    next_x: dict[str, int | None] = {}
     bounds: dict[str, tuple[float, float]] = update_bounds(
         mn,
         tau,
@@ -235,17 +236,20 @@ def next_iter(
     )
     if bn is not None:
         next_x = update_regulatory_state(mn, bn, next_w, v, x, settings)
-        bounds |= {n: (0.0, 0.0) for n in bn if n in mn.reactions() and next_x[n] == 0}
-
+        bounds |= {
+            n: (0.0, 0.0)
+            for n in bn
+            if n in mn.reactions() and next_x[n] is not None and next_x[n] == 0
+        }
     
     opt, next_v = fba.solve(bounds)
     if opt is None or opt < 0:  # FIXME
         opt = 0.0
         next_v = {r: 0.0 for r in mn.reactions()}
     else:
-        opt = opt if abs(opt) > ACCURACY else 0.0
+        opt = opt if abs(opt) > lpeps else 0.0
         next_v = {
-            r: vr if abs(vr) > ACCURACY else 0.0
+            r: vr if abs(vr) > lpeps else 0.0
             for r, vr in next_v.items()
         }
 
@@ -278,6 +282,7 @@ def simulate_rfba(
     iter: int = 100,
     compressed: bool = False,
     lpsolver: str = DEFAULT_SOLVER,
+    lpeps: float = ACCURACY,
 ) -> pd.DataFrame:
     # --------------------------------------------------------------------------
     # Pre-processing
@@ -343,22 +348,22 @@ def simulate_rfba(
         m: concentrations.get(m, 0.0) for m in mn.metabolites(True, False)
     }
     if bn is not None:
-        x: dict[str, int] = bn(
-            {n: 0 for n in bn if n not in mn.metabolites(True, False)}
+        x: dict[str, int | None] = bn(
+            {n: None for n in bn if n not in mn.metabolites(True, False)}
             | {n: 1 if w.get(n, 0) > 0 else 0 for n in mn.metabolites(True, False)}
-            | {n: 0 for n in mn.reactions()}
+            | {n: None for n in mn.reactions()}
             | state  # type: ignore
             | mutations
             | settings
         )
     else:
-        x: dict[str, int] = {}
+        x: dict[str, int | None] = {}
 
     simulation_states: list[
         tuple[
             dict[str, float],
             dict[str, float],
-            dict[str, int],
+            dict[str, int | None],
             float,
             int,
         ]
@@ -379,6 +384,7 @@ def simulate_rfba(
             biomass_0,
             duration_0,
             settings=settings,
+            lpeps=lpeps,
         )
         if i + duration_1 >= iter + 1:
             diff_i_iter = iter + 1 - i
@@ -399,7 +405,7 @@ def simulate_rfba(
             n: f"{n} {TAG_REGULATION}" for n in bn if n not in mn.metabolites()
         }
 
-    sim: list[dict[str, float | int]] = []
+    sim: list[dict[str, float | int | None]] = []
     iter_: int = 0
     for s in range(0, len(simulation_states)):
         v_0, w_0, x_0, biomass_0, duration_0 = simulation_states[s]
@@ -411,14 +417,14 @@ def simulate_rfba(
             w_i: dict[str, float] = update_kinetics(
                 mn, tau, biomass_0, growth_0, w_0, v_0, i + 1
             )
-            state_i: dict[str, float | int] = (
+            state_i: dict[str, float | int | None] = (
                 {
                     "Time": time_rounded,
                     "biomass": biomass_i,
                 }
                 | {met_cols[m]: w_i[m] for m in w_i}
                 | {react_cols[r]: v_0[r] for r in v_0}
-            )
+            )  # type: ignore
             if bn is not None:
                 state_i |= {
                     reg_cols[n]: x_0[n]

@@ -20,7 +20,7 @@ class RegulatoryNetwork:
     def __init__(self: RegulatoryNetwork):
         self.__rules: dict[str, BoolExpr] = {}
         self.__fn: dict[
-            str, Callable[[dict[str, bool | int | float]], bool]
+            str, Callable[[dict[str, bool | int | float]], bool | None]
         ] = {}
 
         self.__components: frozenset[str] | None = None
@@ -107,9 +107,12 @@ class RegulatoryNetwork:
     def __call__(
         self: RegulatoryNetwork,
         context: dict[str, int | float | bool],
-    ) -> dict[str, int]:
+    ) -> dict[str, int | None]:
+        vals: dict[str, bool | None] = {
+            n: fn(context) for n, fn in self.__fn.items()
+        } 
         return {
-            n: 1 if fn(context) else 0 for n, fn in self.__fn.items()
+            n: None if v is None else (1 if v else 0) for n, v in vals.items()
         }
 
     # ==========================================================================

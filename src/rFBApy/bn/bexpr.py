@@ -35,7 +35,7 @@ class BoolExpr(ABC):
     __slots__ = ("_vars", "_threshold", "_signed_vars")
 
     @abstractmethod
-    def compile(self: BoolExpr) -> Callable[[dict[str, bool | int | float]], bool]: ...
+    def compile(self: BoolExpr) -> Callable[[dict[str, bool | int | float]], bool | None]: ...
 
     @abstractmethod
     def simplify(self: BoolExpr) -> BoolExpr: ...
@@ -50,7 +50,7 @@ class BoolExpr(ABC):
         return isinstance(self.simplify(), (TrueExpr, FalseExpr))
 
     @abstractmethod
-    def __call__(self: BoolExpr, context: dict[str, bool | int | float]) -> bool: ...
+    def __call__(self: BoolExpr, context: dict[str, bool | int | float]) -> bool | None: ...
 
     @abstractmethod
     def __str__(self: BoolExpr) -> str: ...
@@ -88,12 +88,18 @@ class AndExpr(BoolExpr):
         self._threshold = None
         self._hash = None
 
-    def compile(self: AndExpr) -> Callable[[dict[str, bool | int | float]], bool]:
+    def compile(self: AndExpr) -> Callable[[dict[str, bool | int | float]], bool | None]:
         subfns = [x.compile() for x in self.items]
-        if len(subfns) == 2:
-            f0, f1 = subfns
-            return lambda state: f0(state) and f1(state)
-        return lambda state: all(f(state) for f in subfns)
+        def fn(state):
+            seen_none = False
+            for f in subfns:
+                v = f(state)
+                if v is False:
+                    return False
+                if v is None:
+                    seen_none = True
+            return None if seen_none else True
+        return fn
 
     def simplify(self: AndExpr) -> BoolExpr:
         eval_items = []
@@ -114,8 +120,12 @@ class AndExpr(BoolExpr):
             return eval_items[0]
         return AndExpr(eval_items)
 
-    def __call__(self: AndExpr, context: dict[str, bool | int | float]) -> bool:
-        return all(x(context) for x in self.items)
+    def __call__(self: AndExpr, context: dict[str, bool | int | float]) -> bool | None:
+        if any(not x(context) for x in self.items):
+            return False
+        if any(x(context) is None for x in self.items):
+            return None
+        return True
 
     def __iter__(self: AndExpr):
         yield from self.items
@@ -173,12 +183,18 @@ class OrExpr(BoolExpr):
         self._threshold = None
         self._hash = None
 
-    def compile(self: OrExpr) -> Callable[[dict[str, bool | int | float]], bool]:
+    def compile(self: OrExpr) -> Callable[[dict[str, bool | int | float]], bool | None]:
         subfns = [x.compile() for x in self.items]
-        if len(subfns) == 2:
-            f0, f1 = subfns
-            return lambda state: f0(state) or f1(state)
-        return lambda state: any(f(state) for f in subfns)
+        def fn(state):
+            seen_none = False
+            for f in subfns:
+                v = f(state)
+                if v is True:
+                    return True
+                if v is None:
+                    seen_none = True
+            return None if seen_none else False
+        return fn
 
     def simplify(self: OrExpr) -> BoolExpr:
         eval_items = []
@@ -199,8 +215,12 @@ class OrExpr(BoolExpr):
             return eval_items[0]
         return OrExpr(eval_items)
 
-    def __call__(self: OrExpr, context: dict[str, bool | int | float]) -> bool:
-        return any(x(context) for x in self.items)
+    def __call__(self: OrExpr, context: dict[str, bool | int | float]) -> bool | None:
+        if any(x(context) for x in self.items):
+            return True
+        if any(x(context) is None for x in self.items):
+            return None
+        return False
 
     def __iter__(self: OrExpr):
         yield from self.items
@@ -257,9 +277,12 @@ class NotExpr(BoolExpr):
         self._signed_vars = None
         self._threshold = None
 
-    def compile(self: NotExpr) -> Callable[[dict[str, bool | int | float]], bool]:
+    def compile(self: NotExpr) -> Callable[[dict[str, bool | int | float]], bool | None]:
         subfn = self.item.compile()
-        return lambda state: not subfn(state)
+        def fn(state):
+            v = subfn(state)
+            return None if v is None else not v
+        return fn
 
     def simplify(self: NotExpr) -> BoolExpr:
         eval_expr = self.item.simplify()
@@ -275,8 +298,9 @@ class NotExpr(BoolExpr):
             )
         return NotExpr(eval_expr)
 
-    def __call__(self: NotExpr, context: dict[str, bool | int | float]) -> bool:
-        return not self.item(context)
+    def __call__(self: NotExpr, context: dict[str, bool | int | float]) -> bool | None:
+        v = self.item(context)
+        return None if v is None else not v
 
     def __str__(self: NotExpr) -> str:
         return "!" + str(self.item)
@@ -318,15 +342,19 @@ class VarExpr(BoolExpr):
         self._signed_vars = None
         self._threshold = None
 
-    def compile(self: VarExpr) -> Callable[[dict[str, bool | int | float]], bool]:
+    def compile(self: VarExpr) -> Callable[[dict[str, bool | int | float]], bool | None]:
         var = self.name
-        return lambda state: bool(state[var])
+        def fn(state):
+            v = state.get(var, None)
+            return None if v is None else bool(v)
+        return fn
 
     def simplify(self: VarExpr) -> VarExpr:
         return VarExpr(self.name)
 
-    def __call__(self: VarExpr, context: dict[str, bool | int | float]) -> bool:
-        return bool(context[self.name])
+    def __call__(self: VarExpr, context: dict[str, bool | int | float]) -> bool | None:
+        v = context.get(self.name, None)
+        return None if v is None else bool(v)
 
     def __str__(self: VarExpr) -> str:
         return self.name
@@ -372,11 +400,14 @@ class ThresholdExpr(BoolExpr):
         self._signed_vars = None
         self._threshold = None
 
-    def compile(self: ThresholdExpr) -> Callable[[dict[str, bool | int | float]], bool]:
+    def compile(self: ThresholdExpr) -> Callable[[dict[str, bool | int | float]], bool | None]:
         var = self.variable.name
         opfn = _OPS[self.op]
         val = self.value
-        return lambda state: opfn(state[var], val)
+        def fn(state):
+            v = state.get(var, None)
+            return None if v is None else opfn(v, val)
+        return fn
 
     def simplify(self: ThresholdExpr) -> ThresholdExpr:
         return ThresholdExpr(
@@ -385,11 +416,12 @@ class ThresholdExpr(BoolExpr):
             self.value,
         )
 
-    def __call__(self: ThresholdExpr, context: dict[str, bool | int | float]) -> bool:
+    def __call__(self: ThresholdExpr, context: dict[str, bool | int | float]) -> bool | None:
         var = self.variable.name
         opfn = _OPS[self.op]
         val = self.value
-        return opfn(context[var], val)
+        v = context.get(var, None)
+        return None if v is None else opfn(v, val)
 
     def __str__(self: ThresholdExpr) -> str:
         return f"[{str(self.variable)} {self.op} {str(self.value)}]"

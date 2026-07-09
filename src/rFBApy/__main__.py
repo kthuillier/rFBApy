@@ -8,7 +8,7 @@ import json
 import pandas as pd # type: ignore
 
 # ~ Custom modules
-from rFBApy.rfba import simulate_rfba
+from rFBApy.rfba import simulate_rfba, ACCURACY
 from rFBApy.fba import LP_SOLVERS, DEFAULT_SOLVER
 
 
@@ -75,6 +75,13 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"LP solver ({', '.join(LP_SOLVERS)})",
     )
 
+    parser.add_argument(
+        "--lpeps",
+        type=float,
+        default=ACCURACY,
+        help=f"Epsilon for to-zero clipping of LP values (Default: {ACCURACY})",
+    )
+
     return parser
 
 
@@ -119,6 +126,7 @@ def parse_args():
         "iter": exp["iter"],
         "compressed": args.compressed,
         "lpsolver": args.lpsolver,
+        "lpeps": args.lpeps,
         "out": args.out,
     }
 
@@ -143,6 +151,7 @@ def main() -> None:
         iter=args["iter"],
         compressed=args["compressed"],
         lpsolver=args["lpsolver"],
+        lpeps=args["lpeps"],
     )
 
     sim_df.to_csv(
