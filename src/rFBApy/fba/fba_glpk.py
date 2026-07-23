@@ -184,10 +184,17 @@ class GlpkFba(FluxBalanceAnalysis):
     # --------------------------------------------------------------------------
     # Solving
     # --------------------------------------------------------------------------
-    def __lpsolve_glpk(self: GlpkFba) \
+    def __lpsolve_glpk(self: GlpkFba, exact: bool) \
             -> Literal['optimal', 'infeasible', 'undefined', 'unbounded']:
         glp_simplex(self.model, self.__smcp)
-        glp_exact(self.model, None)
+        # ~ glp_exact() re-solves with exact (rational) arithmetic to refine
+        # precision on ill-conditioned genome-scale problems, but it leaves the
+        # basis in a state that a subsequent warm-started glp_simplex() call
+        # can report as infeasible. Only run it on the last solve of a chain
+        # (i.e. skip it when the caller is about to warm-start again, such as
+        # pFBA's phase-1 solve immediately followed by the phase-2 resolve).
+        if exact:
+            glp_exact(self.model, None)
         glpk_status: int = glp_get_status(self.model)
         if glpk_status in [GLP_OPT, GLP_FEAS]:
             return 'optimal'
@@ -197,15 +204,20 @@ class GlpkFba(FluxBalanceAnalysis):
             return 'unbounded'
         return 'undefined'
 
-    def _lpsolve(self: GlpkFba) -> None | float:
-        glp_scale_prob(self.model, GLP_SF_AUTO)
-        glp_adv_basis(self.model, 0)   # toujours, pas seulement si 'undefined'
+    def _lpsolve(self: GlpkFba, warm: bool = False, exact: bool = True) -> None | float:
+        # ~ warm=True reuses the current basis (e.g. the pFBA phase-2 resolve,
+        # which only fixes one bound and changes the objective vector, so the
+        # phase-1 optimal basis is still primal-feasible and re-optimizes in a
+        # handful of simplex pivots instead of paying for a full cold restart).
+        if not warm:
+            glp_scale_prob(self.model, GLP_SF_AUTO)
+            glp_adv_basis(self.model, 0)   # toujours, pas seulement si 'undefined'
         status: Literal['optimal', 'infeasible', 'undefined', 'unbounded'] = \
-            self.__lpsolve_glpk()
+            self.__lpsolve_glpk(exact)
         # For GLPK: reset the basis and resolved if status is undefined
         if status == 'undefined':
             glp_adv_basis(self.model, 0)
-            status = self.__lpsolve_glpk()
+            status = self.__lpsolve_glpk(exact)
         # Parse solve status
         if status == 'optimal':
             return float(glp_get_obj_val(self.model))

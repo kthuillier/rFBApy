@@ -105,9 +105,7 @@ def load_experiment(path: str) -> dict:
         "tau": sim_params.get("timeStep", 1e-2),
         "iter": sim_params.get("nSteps", 100),
         "concentrations": exp.get("initConcentrations", {}),
-        "state": exp.get("initRegs", {}),
-        # optional if you later distinguish genes/regs
-        "genes": exp.get("initGenes", {}),
+        "state": exp.get("initRegs", {}) | exp.get("initGenes", {}),
         "mutations": {ko: 0 for ko in constraints.get("ko", [])},
         "bounds": {r: tuple(v) for r, v in constraints.get("bounds", {}).items()},
         "settings": exp.get("settings", {}),

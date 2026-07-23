@@ -5,7 +5,6 @@ from __future__ import annotations
 from rFBApy.fba.fba_interface import FluxBalanceAnalysis
 
 # ~ Gurobi
-from random import randint
 from gurobipy import Model, Var, GRB, Env, LinExpr  # type: ignore
 
 # ==============================================================================
@@ -29,7 +28,6 @@ class GurobiFba(FluxBalanceAnalysis):
         self.model.setParam(GRB.Param.OutputFlag, 0)
         self.model.setParam(GRB.Param.LogToConsole, 0)
         self.model.setParam(GRB.Param.DualReductions, 0)
-        self.model.setParam("Seed", randint(0, 1_000_000))
         self.model.Params.LPWarmStart = 0
 
         # ----------------------------------------------------------------------
@@ -126,7 +124,7 @@ class GurobiFba(FluxBalanceAnalysis):
     # --------------------------------------------------------------------------
     # Solving
     # --------------------------------------------------------------------------
-    def _lpsolve(self: GurobiFba) -> None | float:
+    def _lpsolve(self: GurobiFba, warm: bool = False, exact: bool = True) -> None | float:
         self.model.optimize()
         status_id: int = self.model.Status
         if status_id == GRB.OPTIMAL:

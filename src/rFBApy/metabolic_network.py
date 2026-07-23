@@ -3,6 +3,8 @@
 # ==============================================================================
 from __future__ import annotations
 
+import os
+
 from libsbml import (  # type: ignore
     Model,
     SBMLDocument,
@@ -56,6 +58,12 @@ class MetabolicNetwork:
         # ----------------------------------------------------------------------
         self.__reversible_reactions_mapping: dict[str, tuple[str, str]] = {}
 
+        # ----------------------------------------------------------------------
+        # External metabolites cache (structure is immutable once built, only
+        # bounds change afterwards, so this is safe to memoize)
+        # ----------------------------------------------------------------------
+        self.__external_metabolites: set[str] | None = None
+
     # ==========================================================================
     # Getters
     # ==========================================================================
@@ -73,12 +81,17 @@ class MetabolicNetwork:
         self: MetabolicNetwork, external: bool = True, internal: bool = True
     ) -> set[str]:
         if external and internal:
-            return self.__metabolites | set(self.__exchanges.keys())
+            return self.__metabolites | self.__external_metabolites_cache()
         if external:
-            return set(self.__exchanges.keys())
+            return self.__external_metabolites_cache()
         if internal:
             return self.__metabolites
         return set()
+
+    def __external_metabolites_cache(self: MetabolicNetwork) -> set[str]:
+        if self.__external_metabolites is None:
+            self.__external_metabolites = set(self.__exchanges.keys())
+        return self.__external_metabolites
 
     def exchange(self: MetabolicNetwork, metabolite: str) -> str | None:
         assert metabolite in self.__exchanges
@@ -116,11 +129,13 @@ class MetabolicNetwork:
     # ==========================================================================
     def copy(self: MetabolicNetwork) -> MetabolicNetwork:
         mn_: MetabolicNetwork = MetabolicNetwork()
+        mn_.irreversible = self.irreversible
         mn_.__metabolites = self.__metabolites.copy()
         mn_.__reactions = self.__reactions.copy()
         mn_.__exchanges = self.__exchanges.copy()
         mn_.__S = self.__S.copy()
         mn_.__bounds = self.__bounds.copy()
+        mn_.__reversible_reactions = self.__reversible_reactions.copy()
         mn_.__genes = self.__genes.copy()
         mn_.__genes_association = self.__genes_association.copy()
         mn_.__reversible_reactions_mapping = self.__reversible_reactions_mapping.copy()
@@ -235,6 +250,11 @@ class MetabolicNetwork:
     def read_sbml(cls, sbml_file: str) -> MetabolicNetwork:
         name: str
 
+        if not os.path.isfile(sbml_file):
+            raise FileNotFoundError(
+                f"SBML metabolic network file not found: {sbml_file}"
+            )
+
         # Object initialization
         mn: MetabolicNetwork = cls()
 
@@ -316,6 +336,11 @@ class MetabolicNetwork:
         objective: str,
         lpsolver: str = DEFAULT_SOLVER,
     ) -> FluxBalanceAnalysis:
+        if objective not in self.__reactions:
+            raise ValueError(
+                f"Objective reaction '{objective}' not found in the "
+                "metabolic network."
+            )
         stoichiometry: dict[tuple[str, str], float] = {
             (m, r): coeff
             for (m, r), coeff in self.stoichiometry().items()

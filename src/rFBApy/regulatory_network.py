@@ -3,6 +3,7 @@
 # ==============================================================================
 from __future__ import annotations
 
+import os
 from typing import Callable
 
 from networkx import MultiDiGraph
@@ -137,6 +138,10 @@ class RegulatoryNetwork:
     # --------------------------------------------------------------------------
     @staticmethod
     def load_bnet(bnet: str) -> RegulatoryNetwork:
+        if not os.path.isfile(bnet):
+            raise FileNotFoundError(
+                f"Regulatory network BNET file not found: {bnet}"
+            )
         # ~ Initialize output --------------------------------------------------
         rn = RegulatoryNetwork()
         # ~ Read BNET file -----------------------------------------------------

@@ -22,9 +22,10 @@ class FluxBalanceAnalysis:
         self._bounds: dict[str, tuple[float, float]] = {}
         self._objective: str = ""
         # ~ pFBA: reaction -> auxiliary |flux| variable, and the two
-        # objective-coefficient vectors switched between between the growth
+        # objective-coefficient vectors switched between the growth
         # maximization step and the total-flux minimization step
         self.__pfba_var: dict[str, str] = {}
+        self.__pfba_aux_vars: frozenset[str] = frozenset()
         self.__pfba_coeffs: dict[str, float] = {}
         self.__fba_coeffs: dict[str, float] = {}
 
@@ -41,7 +42,7 @@ class FluxBalanceAnalysis:
 
         # Open SBML file
         sbmld: SBMLDocument = SBMLReader().readSBML(sbml)  # type: ignore
-        sbmlm: Model = sbmld.getModel()
+        sbmlm: Model = sbmld.getModel()  # type: ignore
 
         # Param
         param: dict[str, float] = {}
@@ -202,6 +203,7 @@ class FluxBalanceAnalysis:
             self._add_constraint(f"pfba_pos_{r}", {(1.0, a_r), (-1.0, r)}, 0.0, float('inf'))
             self._add_constraint(f"pfba_neg_{r}", {(1.0, a_r), (1.0, r)}, 0.0, float('inf'))
             self.__pfba_coeffs[a_r] = 1.0
+        self.__pfba_aux_vars = frozenset(self.__pfba_var.values())
 
     # --------------------------------------------------------------------------
     # Solving
@@ -216,14 +218,26 @@ class FluxBalanceAnalysis:
         pfba: bool = True,
     ) -> tuple[None | float, dict[str, float]]:
         self.__set_bounds(bounds)
-        opt: None | float = self._lpsolve()
+        # ~ exact=False when pFBA is about to follow: phase 2 re-solves with
+        # the objective reaction fixed (via an equality bound) to this very
+        # value, and an exact-arithmetic refinement of *this* solve can find
+        # that a floating-point-computed value doesn't exactly satisfy the
+        # rational constraint system, spuriously flipping the fixed-bound
+        # phase-2 problem to infeasible. Only the final solve of the chain
+        # should request the exact-arithmetic pass.
+        opt: None | float = self._lpsolve(exact=not pfba)
         lp_state: dict[str, float] = {}
         if opt is not None:
             lp_state = self.__reaction_state()
             if pfba and opt not in (float('inf'), float('-inf')):
                 self._set_bound(self._objective, opt, opt)
                 self._set_objective(self.__pfba_coeffs, 'min')
-                pfba_opt: None | float = self._lpsolve()
+                # ~ warm=True: only the objective row and one reaction's bound
+                # changed since the phase-1 solve, so the phase-1 optimal
+                # basis is reused instead of paying for a full cold restart.
+                # exact=False for the same reason as above (fixed-bound
+                # equality constraint derived from a floating-point optimum).
+                pfba_opt: None | float = self._lpsolve(warm=True, exact=False)
                 if pfba_opt is not None:
                     lp_state = self.__reaction_state()
                 self._set_objective(self.__fba_coeffs, 'max')
@@ -231,10 +245,13 @@ class FluxBalanceAnalysis:
         return opt, lp_state
 
     def __reaction_state(self: FluxBalanceAnalysis) -> dict[str, float]:
-        aux_vars: set[str] = set(self.__pfba_var.values())
-        return {r: v for r, v in self._lpstate().items() if r not in aux_vars}
+        return {
+            r: v for r, v in self._lpstate().items() if r not in self.__pfba_aux_vars
+        }
 
-    def _lpsolve(self: FluxBalanceAnalysis) -> None | float:
+    def _lpsolve(
+        self: FluxBalanceAnalysis, warm: bool = False, exact: bool = True
+    ) -> None | float:
         raise NotImplementedError()
 
     def _lpstate(self: FluxBalanceAnalysis) -> dict[str, float]:
