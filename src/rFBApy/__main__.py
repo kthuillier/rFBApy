@@ -82,6 +82,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Epsilon for to-zero clipping of LP values (Default: {ACCURACY})",
     )
 
+    parser.add_argument(
+        "--pfba",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use parsimonious FBA (minimize total flux at the optimal "
+             "objective value) instead of plain FBA (Default: True)",
+    )
+
     return parser
 
 
@@ -127,6 +135,7 @@ def parse_args():
         "compressed": args.compressed,
         "lpsolver": args.lpsolver,
         "lpeps": args.lpeps,
+        "pfba": args.pfba,
         "out": args.out,
     }
 
@@ -152,6 +161,7 @@ def main() -> None:
         compressed=args["compressed"],
         lpsolver=args["lpsolver"],
         lpeps=args["lpeps"],
+        pfba=args["pfba"],
     )
 
     sim_df.to_csv(

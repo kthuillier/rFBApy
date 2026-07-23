@@ -215,6 +215,7 @@ def next_iter(
     duration: int,
     settings: dict[str, bool | int | float] = {},
     lpeps: float = ACCURACY,
+    pfba: bool = True,
 ) -> tuple[dict[str, float], dict[str, float], dict[str, int | None], float, int]:
     next_biomass: float = update_biomass(tau, biomass, v[obj], duration)
 
@@ -242,7 +243,7 @@ def next_iter(
             if n in mn.reactions() and next_x[n] is not None and next_x[n] == 0
         }
     
-    opt, next_v = fba.solve(bounds)
+    opt, next_v = fba.solve(bounds, pfba=pfba)
     if opt is None or opt < 0:  # FIXME
         opt = 0.0
         next_v = {r: 0.0 for r in mn.reactions()}
@@ -283,6 +284,7 @@ def simulate_rfba(
     compressed: bool = False,
     lpsolver: str = DEFAULT_SOLVER,
     lpeps: float = ACCURACY,
+    pfba: bool = True,
 ) -> pd.DataFrame:
     # --------------------------------------------------------------------------
     # Pre-processing
@@ -356,6 +358,7 @@ def simulate_rfba(
             | mutations
             | settings
         )
+        x |= {n: None for n in bn if n in mn.reactions()}
     else:
         x: dict[str, int | None] = {}
 
@@ -385,6 +388,7 @@ def simulate_rfba(
             duration_0,
             settings=settings,
             lpeps=lpeps,
+            pfba=pfba,
         )
         if i + duration_1 >= iter + 1:
             diff_i_iter = iter + 1 - i

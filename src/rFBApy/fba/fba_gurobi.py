@@ -79,6 +79,50 @@ class GurobiFba(FluxBalanceAnalysis):
         self.__variables[r].LB = lb
         self.__variables[r].UB = ub
 
+    # ~ Model structure (pFBA auxiliary variables/constraints)
+    def _add_variable(self: GurobiFba, r: str, lb: float, ub: float) -> None:
+        self.__variables[r] = self.model.addVar(
+            name=f'f_{r}',
+            vtype=GRB.CONTINUOUS,
+            lb=lb,
+            ub=ub,
+        )
+        self.model.update()
+
+    def _add_constraint(
+        self: GurobiFba,
+        name: str,
+        expr: set[tuple[float, str]],
+        lb: float,
+        ub: float,
+    ) -> None:
+        lp_expr: LinExpr = sum(
+            coeff * self.__variables[r] for coeff, r in expr  # type: ignore
+        )
+        if lb == ub:
+            self.model.addConstr(lp_expr == lb, name)
+        elif lb == float('-inf') and ub == float('inf'):
+            return
+        elif lb == float('-inf'):
+            self.model.addConstr(lp_expr <= ub, name)
+        elif ub == float('inf'):
+            self.model.addConstr(lp_expr >= lb, name)
+        else:
+            assert lb < ub
+            self.model.addRange(lp_expr, lb, ub, name)
+
+    # ~ Objective
+    def _set_objective(
+        self: GurobiFba, coeffs: dict[str, float], sense: str
+    ) -> None:
+        lp_expr: LinExpr = sum(
+            coeffs.get(r, 0.0) * var for r, var in self.__variables.items()  # type: ignore
+        )
+        self.model.setObjective(
+            lp_expr,
+            sense=GRB.MAXIMIZE if sense == 'max' else GRB.MINIMIZE,
+        )
+
     # --------------------------------------------------------------------------
     # Solving
     # --------------------------------------------------------------------------

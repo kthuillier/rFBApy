@@ -3,6 +3,8 @@
 # ==============================================================================
 from __future__ import annotations
 
+from typing import Literal
+
 from libsbml import (  # type: ignore
     Model,
     SBMLDocument,
@@ -18,6 +20,13 @@ class FluxBalanceAnalysis:
 
     def __init__(self: FluxBalanceAnalysis) -> None:
         self._bounds: dict[str, tuple[float, float]] = {}
+        self._objective: str = ""
+        # ~ pFBA: reaction -> auxiliary |flux| variable, and the two
+        # objective-coefficient vectors switched between between the growth
+        # maximization step and the total-flux minimization step
+        self.__pfba_var: dict[str, str] = {}
+        self.__pfba_coeffs: dict[str, float] = {}
+        self.__fba_coeffs: dict[str, float] = {}
 
     # --------------------------------------------------------------------------
     # Initialization from SBML file
@@ -101,6 +110,8 @@ class FluxBalanceAnalysis:
         fba: FluxBalanceAnalysis = cls._lpinit(
             objective, stoichiometry, bounds
         )
+        fba._objective = objective
+        fba.__setup_pfba(set(bounds.keys()))
         # Return the initialized FBA object
         return fba
 
@@ -121,6 +132,8 @@ class FluxBalanceAnalysis:
         fba: FluxBalanceAnalysis = cls._lpinit(
             objective, stoichiometry_, bounds
         )
+        fba._objective = objective
+        fba.__setup_pfba(set(bounds.keys()))
         # Return the initialized FBA object
         return fba
 
@@ -152,18 +165,74 @@ class FluxBalanceAnalysis:
             -> None:
         raise NotImplementedError()
 
+    # ~ Model structure (used to build the pFBA auxiliary |flux| variables)
+    def _add_variable(self: FluxBalanceAnalysis, r: str, lb: float, ub: float) \
+            -> None:
+        raise NotImplementedError()
+
+    def _add_constraint(
+        self: FluxBalanceAnalysis,
+        name: str,
+        expr: set[tuple[float, str]],
+        lb: float,
+        ub: float,
+    ) -> None:
+        raise NotImplementedError()
+
+    def _set_objective(
+        self: FluxBalanceAnalysis,
+        coeffs: dict[str, float],
+        sense: Literal['max', 'min'],
+    ) -> None:
+        raise NotImplementedError()
+
+    # --------------------------------------------------------------------------
+    # Parsimonious FBA setup
+    # --------------------------------------------------------------------------
+    # > For every reaction r, add an auxiliary variable a_r >= |v_r| (encoded as
+    # > a_r >= v_r and a_r >= -v_r) so that minimizing sum(a_r) minimizes the
+    # > total absolute flux, regardless of whether r is reversible.
+    def __setup_pfba(self: FluxBalanceAnalysis, reactions: set[str]) -> None:
+        self.__fba_coeffs = {self._objective: 1.0}
+        self.__pfba_coeffs = {}
+        for r in sorted(reactions):
+            a_r: str = f"pfba_abs_{r}"
+            self.__pfba_var[r] = a_r
+            self._add_variable(a_r, 0.0, float('inf'))
+            self._add_constraint(f"pfba_pos_{r}", {(1.0, a_r), (-1.0, r)}, 0.0, float('inf'))
+            self._add_constraint(f"pfba_neg_{r}", {(1.0, a_r), (1.0, r)}, 0.0, float('inf'))
+            self.__pfba_coeffs[a_r] = 1.0
+
     # --------------------------------------------------------------------------
     # Solving
     # --------------------------------------------------------------------------
+    # > Two-step parsimonious FBA: (i) maximize the objective reaction, then
+    # > (ii) fix it to its optimum and minimize the total absolute flux over
+    # > every reaction, so the returned flux vector is the most parsimonious
+    # > one achieving the optimal objective value.
     def solve(
         self: FluxBalanceAnalysis,
         bounds: dict[str, tuple[float, float]] = {},
+        pfba: bool = True,
     ) -> tuple[None | float, dict[str, float]]:
         self.__set_bounds(bounds)
-        return_value: None | float = self._lpsolve()
-        lp_state: dict[str, float] = self._lpstate() if return_value is not None else {}
+        opt: None | float = self._lpsolve()
+        lp_state: dict[str, float] = {}
+        if opt is not None:
+            lp_state = self.__reaction_state()
+            if pfba and opt not in (float('inf'), float('-inf')):
+                self._set_bound(self._objective, opt, opt)
+                self._set_objective(self.__pfba_coeffs, 'min')
+                pfba_opt: None | float = self._lpsolve()
+                if pfba_opt is not None:
+                    lp_state = self.__reaction_state()
+                self._set_objective(self.__fba_coeffs, 'max')
         self.__reset_bounds()
-        return return_value, lp_state
+        return opt, lp_state
+
+    def __reaction_state(self: FluxBalanceAnalysis) -> dict[str, float]:
+        aux_vars: set[str] = set(self.__pfba_var.values())
+        return {r: v for r, v in self._lpstate().items() if r not in aux_vars}
 
     def _lpsolve(self: FluxBalanceAnalysis) -> None | float:
         raise NotImplementedError()

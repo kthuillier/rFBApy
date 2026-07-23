@@ -14,6 +14,7 @@ from swiglpk import (  # type: ignore
     GLP_INFEAS,
     GLP_LO,
     GLP_MAX,
+    GLP_MIN,
     GLP_OFF,
     GLP_OPT,
     GLP_FX,
@@ -124,19 +125,61 @@ class GlpkFba(FluxBalanceAnalysis):
         return fba
 
     # ~ Bounds
+    @staticmethod
+    def __bnd_type(lb: float, ub: float) -> tuple[int, float, float]:
+        if lb == float('-inf') and ub == float('inf'):
+            return (GLP_FR, 0., 0.)
+        if lb == float('-inf'):
+            return (GLP_UP, 0., ub)
+        if ub == float('inf'):
+            return (GLP_LO, lb, 0.)
+        if lb == ub:
+            return (GLP_FX, lb, ub)
+        assert lb < ub
+        return (GLP_DB, lb, ub)
+
     def _set_bound(self: GlpkFba, r: str, lb: float, ub: float) -> None:
         assert r in self.__variables
-        if lb == float('-inf') and ub == float('inf'):
-            glp_set_col_bnds(self.model, self.__variables[r], GLP_FR, 0., 0.)
-        elif lb == float('-inf'):
-            glp_set_col_bnds(self.model, self.__variables[r], GLP_UP, 0., ub)
-        elif ub == float('inf'):
-            glp_set_col_bnds(self.model, self.__variables[r], GLP_LO, lb, 0.)
-        elif lb == ub:
-            glp_set_col_bnds(self.model, self.__variables[r], GLP_FX, lb, ub)
-        else:
-            assert lb < ub
-            glp_set_col_bnds(self.model, self.__variables[r], GLP_DB, lb, ub)
+        bnd_type, lb_, ub_ = self.__bnd_type(lb, ub)
+        glp_set_col_bnds(self.model, self.__variables[r], bnd_type, lb_, ub_)
+
+    # ~ Model structure (pFBA auxiliary variables/constraints)
+    def _add_variable(self: GlpkFba, r: str, lb: float, ub: float) -> None:
+        glp_add_cols(self.model, 1)
+        index: int = glp_get_num_cols(self.model)
+        glp_set_col_name(self.model, index, r)
+        glp_set_col_kind(self.model, index, GLP_CV)
+        self.__variables[r] = index
+        self._set_bound(r, lb, ub)
+
+    def _add_constraint(
+        self: GlpkFba,
+        name: str,
+        expr: set[tuple[float, str]],
+        lb: float,
+        ub: float,
+    ) -> None:
+        glp_add_rows(self.model, 1)
+        index: int = glp_get_num_rows(self.model)
+        glp_set_row_name(self.model, index, name)
+        num_vars: int = len(expr)
+        index_array: intArray = intArray(num_vars + 1)
+        value_array: doubleArray = doubleArray(num_vars + 1)
+        for i, (coeff, r) in enumerate(expr):
+            assert r in self.__variables
+            index_array[i + 1] = self.__variables[r]
+            value_array[i + 1] = coeff
+        glp_set_mat_row(self.model, index, num_vars, index_array, value_array)
+        bnd_type, lb_, ub_ = self.__bnd_type(lb, ub)
+        glp_set_row_bnds(self.model, index, bnd_type, lb_, ub_)
+
+    # ~ Objective
+    def _set_objective(
+        self: GlpkFba, coeffs: dict[str, float], sense: str
+    ) -> None:
+        glp_set_obj_dir(self.model, GLP_MAX if sense == 'max' else GLP_MIN)
+        for r, index in self.__variables.items():
+            glp_set_obj_coef(self.model, index, coeffs.get(r, 0.0))
 
     # --------------------------------------------------------------------------
     # Solving
