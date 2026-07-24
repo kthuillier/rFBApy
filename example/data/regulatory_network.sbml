@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version1/core" xmlns:qual="http://www.sbml.org/sbml/level3/version1/qual/version1" level="3" qual:required="true" version="1">
+    <model id="covert2001" name="covert2001">
+        <listOfCompartments>
+            <compartment id="cell" constant="true"/>
+            <compartment id="ext" constant="true"/>
+        </listOfCompartments>
+        <qual:listOfQualitativeSpecies xmlns:qual="http://www.sbml.org/sbml/level3/version1/qual/version1">
+            <qual:qualitativeSpecies qual:compartment="ext" qual:constant="false" qual:id="R8a" qual:maxLevel="1" qual:initialLevel="0">
+                <notes>
+                    <body xmlns="http://www.w3.org/1999/xhtml">
+                        <p>STATE 0:[0,0]</p>
+                        <p>STATE 1:]0,+inf]</p>
+                    </body>
+                </notes>
+            </qual:qualitativeSpecies>
+            <qual:qualitativeSpecies qual:compartment="ext" qual:constant="false" qual:id="Carbon1" qual:maxLevel="1" qual:initialLevel="0">
+                <notes>
+                    <body xmlns="http://www.w3.org/1999/xhtml">
+                        <p>STATE 0:[0,0]</p>
+                        <p>STATE 1:]0,+inf]</p>
+                    </body>
+                </notes>
+            </qual:qualitativeSpecies>
+            <qual:qualitativeSpecies qual:compartment="ext" qual:constant="false" qual:id="Rres" qual:maxLevel="1" qual:initialLevel="0">
+                <notes>
+                    <body xmlns="http://www.w3.org/1999/xhtml">
+                        <p>STATE 0:[0,0]</p>
+                        <p>STATE 1:]0,+inf]</p>
+                    </body>
+                </notes>
+            </qual:qualitativeSpecies>
+            <qual:qualitativeSpecies qual:compartment="cell" qual:constant="false" qual:id="RPcl" qual:maxLevel="1" qual:initialLevel="0"/>
+            <qual:qualitativeSpecies qual:compartment="ext" qual:constant="false" qual:id="R5b" qual:maxLevel="1" qual:initialLevel="0">
+                <notes>
+                    <body xmlns="http://www.w3.org/1999/xhtml">
+                        <p>STATE 0:[0,0]</p>
+                        <p>STATE 1:]0,+inf]</p>
+                    </body>
+                </notes>
+            </qual:qualitativeSpecies>
+            <qual:qualitativeSpecies qual:compartment="ext" qual:constant="false" qual:id="R7" qual:maxLevel="1" qual:initialLevel="0">
+                <notes>
+                    <body xmlns="http://www.w3.org/1999/xhtml">
+                        <p>STATE 0:[0,0]</p>
+                        <p>STATE 1:]0,+inf]</p>
+                    </body>
+                </notes>
+            </qual:qualitativeSpecies>
+            <qual:qualitativeSpecies qual:compartment="cell" qual:constant="false" qual:id="RPh" qual:maxLevel="1" qual:initialLevel="0"/>
+            <qual:qualitativeSpecies qual:compartment="ext" qual:constant="false" qual:id="Oxygen" qual:maxLevel="1" qual:initialLevel="0">
+                <notes>
+                    <body xmlns="http://www.w3.org/1999/xhtml">
+                        <p>STATE 0:[0,0]</p>
+                        <p>STATE 1:]0,+inf]</p>
+                    </body>
+                </notes>
+            </qual:qualitativeSpecies>
+            <qual:qualitativeSpecies qual:compartment="cell" qual:constant="false" qual:id="RPO2" qual:maxLevel="1" qual:initialLevel="0"/>
+            <qual:qualitativeSpecies qual:compartment="cell" qual:constant="false" qual:id="RPb" qual:maxLevel="1" qual:initialLevel="0"/>
+            <qual:qualitativeSpecies qual:compartment="ext" qual:constant="false" qual:id="Hext" qual:maxLevel="1" qual:initialLevel="0">
+                <notes>
+                    <body xmlns="http://www.w3.org/1999/xhtml">
+                        <p>STATE 0:[0,0]</p>
+                        <p>STATE 1:]0,+inf]</p>
+                    </body>
+                </notes>
+            </qual:qualitativeSpecies>
+            <qual:qualitativeSpecies qual:compartment="ext" qual:constant="false" qual:id="R2b" qual:maxLevel="1" qual:initialLevel="0">
+                <notes>
+                    <body xmlns="http://www.w3.org/1999/xhtml">
+                        <p>STATE 0:[0,0]</p>
+                        <p>STATE 1:]0,+inf]</p>
+                    </body>
+                </notes>
+            </qual:qualitativeSpecies>
+            <qual:qualitativeSpecies qual:compartment="ext" qual:constant="false" qual:id="Tc2" qual:maxLevel="1" qual:initialLevel="0">
+                <notes>
+                    <body xmlns="http://www.w3.org/1999/xhtml">
+                        <p>STATE 0:[0,0]</p>
+                        <p>STATE 1:]0,+inf]</p>
+                    </body>
+                </notes>
+            </qual:qualitativeSpecies>
+            <qual:qualitativeSpecies qual:compartment="ext" qual:constant="false" qual:id="R2a" qual:maxLevel="1" qual:initialLevel="0">
+                <notes>
+                    <body xmlns="http://www.w3.org/1999/xhtml">
+                        <p>STATE 0:[0,0]</p>
+                        <p>STATE 1:]0,+inf]</p>
+                    </body>
+                </notes>
+            </qual:qualitativeSpecies>
+            <qual:qualitativeSpecies qual:compartment="ext" qual:constant="false" qual:id="R5a" qual:maxLevel="1" qual:initialLevel="0">
+                <notes>
+                    <body xmlns="http://www.w3.org/1999/xhtml">
+                        <p>STATE 0:[0,0]</p>
+                        <p>STATE 1:]0,+inf]</p>
+                    </body>
+                </notes>
+            </qual:qualitativeSpecies>
+        </qual:listOfQualitativeSpecies>
+        <qual:listOfTransitions xmlns:qual="http://www.sbml.org/sbml/level3/version1/qual/version1">
+            <qual:transition qual:id="tr_RPcl_">
+                <qual:listOfInputs>
+                    <qual:input qual:id="tr_RPcl_in_Carbon1" qual:qualitativeSpecies="Carbon1" qual:sign="positive" qual:transitionEffect="none"/>
+                </qual:listOfInputs>
+                <qual:listOfOutputs>
+                    <qual:output qual:id="tr_RPcl_out" qual:qualitativeSpecies="RPcl" qual:transitionEffect="assignmentLevel"/>
+                </qual:listOfOutputs>
+                <qual:listOfFunctionTerms>
+                    <qual:defaultTerm qual:resultLevel="0">
+                    </qual:defaultTerm>
+                    <qual:functionTerm qual:resultLevel="1">
+                        <math xmlns="http://www.w3.org/1998/Math/MathML">
+                            <apply>
+                                <eq/>
+                                <ci> Carbon1 </ci>
+                                <cn type="integer"> 1 </cn>
+                            </apply>
+                        </math>
+                    </qual:functionTerm>
+                </qual:listOfFunctionTerms>
+            </qual:transition>
+            <qual:transition qual:id="tr_RPO2_">
+                <qual:listOfInputs>
+                    <qual:input qual:id="tr_RPO2_in_Oxygen" qual:qualitativeSpecies="Oxygen" qual:sign="positive" qual:transitionEffect="none"/>
+                </qual:listOfInputs>
+                <qual:listOfOutputs>
+                    <qual:output qual:id="tr_RPO2_out" qual:qualitativeSpecies="RPO2" qual:transitionEffect="assignmentLevel"/>
+                </qual:listOfOutputs>
+                <qual:listOfFunctionTerms>
+                    <qual:defaultTerm qual:resultLevel="0">
+                    </qual:defaultTerm>
+                    <qual:functionTerm qual:resultLevel="1">
+                        <math xmlns="http://www.w3.org/1998/Math/MathML">
+                            <apply>
+                                <not/>
+                                <apply>
+                                    <eq/>
+                                    <ci> Oxygen </ci>
+                                    <cn type="integer"> 1 </cn>
+                                </apply>
+                            </apply>
+                        </math>
+                    </qual:functionTerm>
+                </qual:listOfFunctionTerms>
+            </qual:transition>
+            <qual:transition qual:id="tr_RPh_">
+                <qual:listOfInputs>
+                    <qual:input qual:id="tr_RPh_in_Hext" qual:qualitativeSpecies="Hext" qual:sign="positive" qual:transitionEffect="none"/>
+                </qual:listOfInputs>
+                <qual:listOfOutputs>
+                    <qual:output qual:id="tr_RPh_out" qual:qualitativeSpecies="RPh" qual:transitionEffect="assignmentLevel"/>
+                </qual:listOfOutputs>
+                <qual:listOfFunctionTerms>
+                    <qual:defaultTerm qual:resultLevel="0">
+                    </qual:defaultTerm>
+                    <qual:functionTerm qual:resultLevel="1">
+                        <math xmlns="http://www.w3.org/1998/Math/MathML">
+                            <apply>
+                                <eq/>
+                                <ci> Hext </ci>
+                                <cn type="integer"> 1 </cn>
+                            </apply>
+                        </math>
+                    </qual:functionTerm>
+                </qual:listOfFunctionTerms>
+            </qual:transition>
+            <qual:transition qual:id="tr_RPb_">
+                <qual:listOfInputs>
+                    <qual:input qual:id="tr_RPb_in_R2b" qual:qualitativeSpecies="R2b" qual:sign="positive" qual:transitionEffect="none"/>
+                </qual:listOfInputs>
+                <qual:listOfOutputs>
+                    <qual:output qual:id="tr_RPb_out" qual:qualitativeSpecies="RPb" qual:transitionEffect="assignmentLevel"/>
+                </qual:listOfOutputs>
+                <qual:listOfFunctionTerms>
+                    <qual:defaultTerm qual:resultLevel="0">
+                    </qual:defaultTerm>
+                    <qual:functionTerm qual:resultLevel="1">
+                        <math xmlns="http://www.w3.org/1998/Math/MathML">
+                            <apply>
+                                <eq/>
+                                <ci> R2b </ci>
+                                <cn type="integer"> 1 </cn>
+                            </apply>
+                        </math>
+                    </qual:functionTerm>
+                </qual:listOfFunctionTerms>
+            </qual:transition>
+            <qual:transition qual:id="tr_Tc2_">
+                <qual:listOfInputs>
+                    <qual:input qual:id="tr_Tc2_in_RPcl" qual:qualitativeSpecies="RPcl" qual:sign="positive" qual:transitionEffect="none"/>
+                </qual:listOfInputs>
+                <qual:listOfOutputs>
+                    <qual:output qual:id="tr_Tc2_out" qual:qualitativeSpecies="Tc2" qual:transitionEffect="assignmentLevel"/>
+                </qual:listOfOutputs>
+                <qual:listOfFunctionTerms>
+                    <qual:defaultTerm qual:resultLevel="0">
+                    </qual:defaultTerm>
+                    <qual:functionTerm qual:resultLevel="1">
+                        <math xmlns="http://www.w3.org/1998/Math/MathML">
+                            <apply>
+                                <not/>
+                                <apply>
+                                    <eq/>
+                                    <ci> RPcl </ci>
+                                    <cn type="integer"> 1 </cn>
+                                </apply>
+                            </apply>
+                        </math>
+                    </qual:functionTerm>
+                </qual:listOfFunctionTerms>
+            </qual:transition>
+            <qual:transition qual:id="tr_Rres_">
+                <qual:listOfInputs>
+                    <qual:input qual:id="tr_Rres_in_RPO2" qual:qualitativeSpecies="RPO2" qual:sign="positive" qual:transitionEffect="none"/>
+                </qual:listOfInputs>
+                <qual:listOfOutputs>
+                    <qual:output qual:id="tr_Rres_out" qual:qualitativeSpecies="Rres" qual:transitionEffect="assignmentLevel"/>
+                </qual:listOfOutputs>
+                <qual:listOfFunctionTerms>
+                    <qual:defaultTerm qual:resultLevel="0">
+                    </qual:defaultTerm>
+                    <qual:functionTerm qual:resultLevel="1">
+                        <math xmlns="http://www.w3.org/1998/Math/MathML">
+                            <apply>
+                                <not/>
+                                <apply>
+                                    <eq/>
+                                    <ci> RPO2 </ci>
+                                    <cn type="integer"> 1 </cn>
+                                </apply>
+                            </apply>
+                        </math>
+                    </qual:functionTerm>
+                </qual:listOfFunctionTerms>
+            </qual:transition>
+            <qual:transition qual:id="tr_R5a_">
+                <qual:listOfInputs>
+                    <qual:input qual:id="tr_R5a_in_RPO2" qual:qualitativeSpecies="RPO2" qual:sign="positive" qual:transitionEffect="none"/>
+                </qual:listOfInputs>
+                <qual:listOfOutputs>
+                    <qual:output qual:id="tr_R5a_out" qual:qualitativeSpecies="R5a" qual:transitionEffect="assignmentLevel"/>
+                </qual:listOfOutputs>
+                <qual:listOfFunctionTerms>
+                    <qual:defaultTerm qual:resultLevel="0">
+                    </qual:defaultTerm>
+                    <qual:functionTerm qual:resultLevel="1">
+                        <math xmlns="http://www.w3.org/1998/Math/MathML">
+                            <apply>
+                                <not/>
+                                <apply>
+                                    <eq/>
+                                    <ci> RPO2 </ci>
+                                    <cn type="integer"> 1 </cn>
+                                </apply>
+                            </apply>
+                        </math>
+                    </qual:functionTerm>
+                </qual:listOfFunctionTerms>
+            </qual:transition>
+            <qual:transition qual:id="tr_R5b_">
+                <qual:listOfInputs>
+                    <qual:input qual:id="tr_R5b_in_RPO2" qual:qualitativeSpecies="RPO2" qual:sign="positive" qual:transitionEffect="none"/>
+                </qual:listOfInputs>
+                <qual:listOfOutputs>
+                    <qual:output qual:id="tr_R5b_out" qual:qualitativeSpecies="R5b" qual:transitionEffect="assignmentLevel"/>
+                </qual:listOfOutputs>
+                <qual:listOfFunctionTerms>
+                    <qual:defaultTerm qual:resultLevel="0">
+                    </qual:defaultTerm>
+                    <qual:functionTerm qual:resultLevel="1">
+                        <math xmlns="http://www.w3.org/1998/Math/MathML">
+                            <apply>
+                                <eq/>
+                                <ci> RPO2 </ci>
+                                <cn type="integer"> 1 </cn>
+                            </apply>
+                        </math>
+                    </qual:functionTerm>
+                </qual:listOfFunctionTerms>
+            </qual:transition>
+            <qual:transition qual:id="tr_R8a_">
+                <qual:listOfInputs>
+                    <qual:input qual:id="tr_R8a_in_RPh" qual:qualitativeSpecies="RPh" qual:sign="positive" qual:transitionEffect="none"/>
+                </qual:listOfInputs>
+                <qual:listOfOutputs>
+                    <qual:output qual:id="tr_R8a_out" qual:qualitativeSpecies="R8a" qual:transitionEffect="assignmentLevel"/>
+                </qual:listOfOutputs>
+                <qual:listOfFunctionTerms>
+                    <qual:defaultTerm qual:resultLevel="0">
+                    </qual:defaultTerm>
+                    <qual:functionTerm qual:resultLevel="1">
+                        <math xmlns="http://www.w3.org/1998/Math/MathML">
+                            <apply>
+                                <not/>
+                                <apply>
+                                    <eq/>
+                                    <ci> RPh </ci>
+                                    <cn type="integer"> 1 </cn>
+                                </apply>
+                            </apply>
+                        </math>
+                    </qual:functionTerm>
+                </qual:listOfFunctionTerms>
+            </qual:transition>
+            <qual:transition qual:id="tr_R7_">
+                <qual:listOfInputs>
+                    <qual:input qual:id="tr_R7_in_RPb" qual:qualitativeSpecies="RPb" qual:sign="positive" qual:transitionEffect="none"/>
+                </qual:listOfInputs>
+                <qual:listOfOutputs>
+                    <qual:output qual:id="tr_R7_out" qual:qualitativeSpecies="R7" qual:transitionEffect="assignmentLevel"/>
+                </qual:listOfOutputs>
+                <qual:listOfFunctionTerms>
+                    <qual:defaultTerm qual:resultLevel="0">
+                    </qual:defaultTerm>
+                    <qual:functionTerm qual:resultLevel="1">
+                        <math xmlns="http://www.w3.org/1998/Math/MathML">
+                            <apply>
+                                <not/>
+                                <apply>
+                                    <eq/>
+                                    <ci> RPb </ci>
+                                    <cn type="integer"> 1 </cn>
+                                </apply>
+                            </apply>
+                        </math>
+                    </qual:functionTerm>
+                </qual:listOfFunctionTerms>
+            </qual:transition>
+            <qual:transition qual:id="tr_R2a_">
+                <qual:listOfInputs>
+                    <qual:input qual:id="tr_R2a_in_RPb" qual:qualitativeSpecies="RPb" qual:sign="positive" qual:transitionEffect="none"/>
+                </qual:listOfInputs>
+                <qual:listOfOutputs>
+                    <qual:output qual:id="tr_R2a_out" qual:qualitativeSpecies="R2a" qual:transitionEffect="assignmentLevel"/>
+                </qual:listOfOutputs>
+                <qual:listOfFunctionTerms>
+                    <qual:defaultTerm qual:resultLevel="0">
+                    </qual:defaultTerm>
+                    <qual:functionTerm qual:resultLevel="1">
+                        <math xmlns="http://www.w3.org/1998/Math/MathML">
+                            <apply>
+                                <not/>
+                                <apply>
+                                    <eq/>
+                                    <ci> RPb </ci>
+                                    <cn type="integer"> 1 </cn>
+                                </apply>
+                            </apply>
+                        </math>
+                    </qual:functionTerm>
+                </qual:listOfFunctionTerms>
+            </qual:transition>
+        </qual:listOfTransitions>
+    </model>
+</sbml>

@@ -58,7 +58,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--bnet", "-bn",
         type=str,
         default=None,
-        help="Path to Boolean regulatory network",
+        help="Path to Boolean regulatory network (.bnet). Not required; if "
+             "both --bnet and --sbmlqual are given, --bnet takes precedence.",
+    )
+
+    parser.add_argument(
+        "--sbmlqual", "-sq",
+        type=str,
+        default=None,
+        help="Path to SBML-Qual regulatory network. Not required; ignored if "
+             "--bnet is also given.",
     )
 
     parser.add_argument(
@@ -121,6 +130,7 @@ def parse_args():
     return {
         "sbml": args.sbml,
         "bnet": args.bnet,
+        "sbmlqual": args.sbmlqual,
         "obj": args.obj,
         "concentrations": exp["concentrations"],
         "state": exp["state"],
@@ -147,6 +157,7 @@ def main() -> None:
     sim_df: pd.DataFrame = simulate_rfba(
         sbml=args["sbml"],
         bnet=args["bnet"],
+        sbmlqual=args["sbmlqual"],
         obj=args["obj"],
         concentrations=args["concentrations"],
         state=args["state"],

@@ -273,6 +273,7 @@ def simulate_rfba(
     sbml: str | MetabolicNetwork,
     obj: str,
     bnet: str | RegulatoryNetwork | None = None,
+    sbmlqual: str | RegulatoryNetwork | None = None,
     concentrations: dict[str, float] = {},
     state: dict[str, int] = {},
     bounds: dict[str, tuple[float, float]] = {},
@@ -299,6 +300,10 @@ def simulate_rfba(
         bn: RegulatoryNetwork | None = bnet
     elif bnet is not None:
         bn: RegulatoryNetwork | None = RegulatoryNetwork.load_bnet(bnet)
+    elif isinstance(sbmlqual, RegulatoryNetwork):
+        bn: RegulatoryNetwork | None = sbmlqual
+    elif sbmlqual is not None:
+        bn: RegulatoryNetwork | None = RegulatoryNetwork.load_sbml(sbmlqual)
     else:
         bn: RegulatoryNetwork | None = None
 
