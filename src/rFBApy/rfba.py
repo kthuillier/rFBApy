@@ -75,7 +75,7 @@ def update_kinetics(
         w_[n] = wn_ - ((s_mr * v[r]) / growth) * biomass * (
             1 - exp(growth * tau * k)
         )
-        w_[n] = max(0.0, wn_)
+        w_[n] = max(0.0, w_[n])
     return w_
 
 
