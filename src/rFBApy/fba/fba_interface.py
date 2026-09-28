@@ -5,12 +5,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from libsbml import (  # type: ignore
-    Model,
-    SBMLDocument,
-    SBMLReader,
-    FbcReactionPlugin
-)
+from libsbml import FbcReactionPlugin, Model, SBMLDocument, SBMLReader  # type: ignore
 
 
 # ==============================================================================
@@ -28,6 +23,9 @@ class FluxBalanceAnalysis:
         self.__pfba_aux_vars: frozenset[str] = frozenset()
         self.__pfba_coeffs: dict[str, float] = {}
         self.__fba_coeffs: dict[str, float] = {}
+        # ~ Reactions to build |flux| auxiliary variables for, *if* pFBA ever
+        # gets requested -- see __setup_pfba().
+        self.__pfba_reactions: frozenset[str] = frozenset()
 
     # --------------------------------------------------------------------------
     # Initialization from SBML file
@@ -112,7 +110,14 @@ class FluxBalanceAnalysis:
             objective, stoichiometry, bounds
         )
         fba._objective = objective
-        fba.__setup_pfba(set(bounds.keys()))
+        # ~ pFBA's |flux| auxiliary variables/constraints are NOT built here:
+        # they roughly double the model size (one aux var + 2 constraints per
+        # reaction), which is wasted work -- and, on a size-limited license,
+        # can make an otherwise-fitting model too large -- whenever a caller
+        # never actually requests pfba=True. __setup_pfba() builds them lazily
+        # on the first solve(pfba=True) call instead; just remember which
+        # reactions they'll cover.
+        fba.__pfba_reactions = frozenset(bounds.keys())
         # Return the initialized FBA object
         return fba
 
@@ -134,7 +139,9 @@ class FluxBalanceAnalysis:
             objective, stoichiometry_, bounds
         )
         fba._objective = objective
-        fba.__setup_pfba(set(bounds.keys()))
+        # ~ See load_sbml(): pFBA setup is deferred to the first
+        # solve(pfba=True) call, not done unconditionally here.
+        fba.__pfba_reactions = frozenset(bounds.keys())
         # Return the initialized FBA object
         return fba
 
@@ -193,7 +200,12 @@ class FluxBalanceAnalysis:
     # > For every reaction r, add an auxiliary variable a_r >= |v_r| (encoded as
     # > a_r >= v_r and a_r >= -v_r) so that minimizing sum(a_r) minimizes the
     # > total absolute flux, regardless of whether r is reversible.
-    def __setup_pfba(self: FluxBalanceAnalysis, reactions: set[str]) -> None:
+    def __setup_pfba(self: FluxBalanceAnalysis, reactions: frozenset[str]) -> None:
+        if self.__pfba_var:
+            # Already built (e.g. a previous solve(pfba=True) call on this
+            # same fba instance -- rfba.py reuses one fba object across every
+            # time step of a simulation) -- nothing to do.
+            return
         self.__fba_coeffs = {self._objective: 1.0}
         self.__pfba_coeffs = {}
         for r in sorted(reactions):
@@ -214,9 +226,11 @@ class FluxBalanceAnalysis:
     # > one achieving the optimal objective value.
     def solve(
         self: FluxBalanceAnalysis,
-        bounds: dict[str, tuple[float, float]] = {},
+        bounds: dict[str, tuple[float, float]] | None = None,
         pfba: bool = True,
     ) -> tuple[None | float, dict[str, float]]:
+        if bounds is None:
+            bounds = {}
         self.__set_bounds(bounds)
         # ~ exact=False when pFBA is about to follow: phase 2 re-solves with
         # the objective reaction fixed (via an equality bound) to this very
@@ -230,6 +244,9 @@ class FluxBalanceAnalysis:
         if opt is not None:
             lp_state = self.__reaction_state()
             if pfba and opt not in (float('inf'), float('-inf')):
+                # ~ Lazy, idempotent: only pays for the |flux| auxiliary
+                # variables/constraints the first time pFBA is actually used.
+                self.__setup_pfba(self.__pfba_reactions)
                 self._set_bound(self._objective, opt, opt)
                 self._set_objective(self.__pfba_coeffs, 'min')
                 # ~ warm=True: only the objective row and one reaction's bound

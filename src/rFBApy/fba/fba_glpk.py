@@ -11,13 +11,13 @@ from swiglpk import (  # type: ignore
     GLP_DB,
     GLP_FEAS,
     GLP_FR,
+    GLP_FX,
     GLP_INFEAS,
     GLP_LO,
     GLP_MAX,
     GLP_MIN,
     GLP_OFF,
     GLP_OPT,
-    GLP_FX,
     GLP_SF_AUTO,
     GLP_UNBND,
     GLP_UP,
@@ -27,6 +27,8 @@ from swiglpk import (  # type: ignore
     glp_adv_basis,
     glp_create_index,
     glp_create_prob,
+    glp_delete_prob,
+    glp_exact,
     glp_get_col_prim,
     glp_get_num_cols,
     glp_get_num_rows,
@@ -44,7 +46,6 @@ from swiglpk import (  # type: ignore
     glp_set_row_bnds,
     glp_set_row_name,
     glp_simplex,
-    glp_exact,
     glp_smcp,
     glp_term_out,
     intArray,
@@ -79,6 +80,25 @@ class GlpkFba(FluxBalanceAnalysis):
         # Memory
         # ----------------------------------------------------------------------
         self.__variables: dict[str, int] = {}
+
+    def __del__(self: GlpkFba) -> None:
+        # glp_create_prob() allocates the LP problem in GLPK's own C-level
+        # memory, entirely opaque to Python's garbage collector -- without an
+        # explicit glp_delete_prob() call, every GlpkFba instance (one per
+        # simulate_rfba() call, since instantiate_fba() is called fresh each
+        # time -- see rfba.py) leaks its underlying LP problem forever.
+        # Confirmed in practice: a ~13,000-job batch (fresh GlpkFba per job,
+        # 20 worker processes) grew each worker from ~350MB to 1.6-1.7GB RSS,
+        # driving system swap to its 8GB limit and cratering throughput,
+        # before this fix. `model` may not be set if __init__ raised before
+        # reaching glp_create_prob(), and __del__ can run during interpreter
+        # shutdown with globals already torn down, so guard both.
+        model = getattr(self, "model", None)
+        if model is not None:
+            try:
+                glp_delete_prob(model)
+            except Exception:  # noqa: BLE001, S110
+                pass
 
     # --------------------------------------------------------------------------
     # Setters

@@ -2,10 +2,11 @@
 # Imports
 # ==============================================================================
 from __future__ import annotations
-from rFBApy.fba.fba_interface import FluxBalanceAnalysis
 
 # ~ Gurobi
-from gurobipy import Model, Var, GRB, Env, LinExpr  # type: ignore
+from gurobipy import GRB, Env, LinExpr, Model, Var  # type: ignore
+
+from rFBApy.fba.fba_interface import FluxBalanceAnalysis
 
 # ==============================================================================
 # Flux Balance Analysis - Gurobi Implementation
@@ -29,11 +30,37 @@ class GurobiFba(FluxBalanceAnalysis):
         self.model.setParam(GRB.Param.LogToConsole, 0)
         self.model.setParam(GRB.Param.DualReductions, 0)
         self.model.Params.LPWarmStart = 0
+        self._env: Env = env
 
         # ----------------------------------------------------------------------
         # Memory
         # ----------------------------------------------------------------------
         self.__variables: dict[str, Var] = {}
+
+    def __del__(self: GurobiFba) -> None:
+        # Env(empty=True)/Model(...) allocate their state in Gurobi's own
+        # C-level memory, entirely opaque to Python's garbage collector --
+        # without explicit dispose() calls, every GurobiFba instance (one per
+        # simulate_rfba() call, since instantiate_fba() is called fresh each
+        # time -- see rfba.py) leaks both its model *and* its environment
+        # forever. Same failure mode as GlpkFba.__del__ (see there for the
+        # batch run that surfaced this class of bug). `model`/`_env` may not
+        # be set if __init__ raised before reaching them, and __del__ can run
+        # during interpreter shutdown with globals already torn down, so
+        # guard both and never let cleanup raise. The model must be disposed
+        # before its environment.
+        model = getattr(self, "model", None)
+        if model is not None:
+            try:
+                model.dispose()
+            except Exception:  # noqa: BLE001, S110
+                pass
+        env = getattr(self, "_env", None)
+        if env is not None:
+            try:
+                env.dispose()
+            except Exception:  # noqa: BLE001, S110
+                pass
 
     # --------------------------------------------------------------------------
     # Setters

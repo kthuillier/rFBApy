@@ -3,7 +3,7 @@
 # ==============================================================================
 from __future__ import annotations
 
-from math import exp, floor, inf, log
+from math import exp, floor, inf, log, log10
 
 import pandas as pd  # type: ignore
 
@@ -33,7 +33,7 @@ def update_regulatory_state(
     w: dict[str, float],
     v: dict[str, float],
     x: dict[str, int | None],
-    settings: dict[str, int | bool | float] = {},
+    settings: dict[str, int | bool | float] = {},  # noqa: B006
 ) -> dict[str, int | None]:
     mext_state = {
         m: w.get(m, 0)
@@ -68,14 +68,14 @@ def update_kinetics(
     w_: dict[str, float] = w.copy()
     if growth == 0:
         return w_
-    for n in w_:
+    for n, wn_ in w_.items():
         r: str | None = mn.exchange(n)
         assert r is not None
         s_mr: float = mn.stoichiometry()[(n, r)]
-        w_[n] = w_[n] = w_[n] - ((s_mr * v[r]) / growth) * biomass * (
+        w_[n] = wn_ - ((s_mr * v[r]) / growth) * biomass * (
             1 - exp(growth * tau * k)
         )
-        w_[n] = max(0.0, w_[n])
+        w_[n] = max(0.0, wn_)
     return w_
 
 
@@ -168,7 +168,7 @@ def estimate_state_duration(
     v: dict[str, float],
     w: dict[str, float],
     obj: str,
-    settings: dict[str, int | bool | float] = {},
+    settings: dict[str, int | bool | float] = {},  # noqa: B006
 ) -> int:
     biomass_plus_1: float = update_biomass(tau, biomass, v[obj], k=1)
     w_plus_1: dict[str, float] = update_kinetics(
@@ -213,7 +213,7 @@ def next_iter(
     x: dict[str, int | None],
     biomass: float,
     duration: int,
-    settings: dict[str, bool | int | float] = {},
+    settings: dict[str, bool | int | float] = {},  # noqa: B006
     lpeps: float = ACCURACY,
     pfba: bool = True,
 ) -> tuple[dict[str, float], dict[str, float], dict[str, int | None], float, int]:
@@ -274,11 +274,11 @@ def simulate_rfba(
     obj: str,
     bnet: str | RegulatoryNetwork | None = None,
     sbmlqual: str | RegulatoryNetwork | None = None,
-    concentrations: dict[str, float] = {},
-    state: dict[str, int] = {},
-    bounds: dict[str, tuple[float, float]] = {},
-    mutations: dict[str, int] = {},
-    settings: dict[str, bool | int | float] = {},
+    concentrations: dict[str, float] = {},  # noqa: B006
+    state: dict[str, int] = {},  # noqa: B006
+    bounds: dict[str, tuple[float, float]] = {},  # noqa: B006
+    mutations: dict[str, int] = {},  # noqa: B006
+    settings: dict[str, bool | int | float] = {},  # noqa: B006
     biomass: float = 1e-2,
     tau: float = 1e-2,
     iter: int = 100,
@@ -307,12 +307,25 @@ def simulate_rfba(
     else:
         bn: RegulatoryNetwork | None = None
 
-    fba: FluxBalanceAnalysis = mn.instantiate_fba(obj, lpsolver=lpsolver)
-
     # ~ Experiment bounds
+    #
+    # Must run BEFORE instantiate_fba(): MetabolicNetwork.instantiate_fba()
+    # passes self.__bounds.copy() to the LP backend as a one-time snapshot
+    # (FluxBalanceAnalysis._bounds), not a live view of `mn`. Every simulation
+    # tick's solve() call only overrides that snapshot for the reactions
+    # explicitly present in its own `bounds` dict argument -- exchange
+    # reactions (recomputed each tick by update_bounds() from mn's *current*
+    # bounds) and reactions a regulatory gene switches off. A non-exchange
+    # (internal) reaction customized only via this function's `bounds`
+    # argument is never in either of those per-tick sets, so if set_bound()
+    # ran after instantiate_fba(), the override would silently never reach
+    # the solver -- the reaction would keep using whatever bound the raw
+    # SBML declared, for the entire simulation.
     for r, (lb, ub) in bounds.items():
         if r in mn.reactions():
             mn.set_bound(r, lb, ub)
+
+    fba: FluxBalanceAnalysis = mn.instantiate_fba(obj, lpsolver=lpsolver)
 
     if (len(mutations) != 0 or len(mn.genes_association()) != 0) and bn is None:
         bn = RegulatoryNetwork()
@@ -416,12 +429,12 @@ def simulate_rfba(
 
     sim: list[dict[str, float | int | None]] = []
     iter_: int = 0
-    for s in range(0, len(simulation_states)):
+    for s in range(len(simulation_states)):
         v_0, w_0, x_0, biomass_0, duration_0 = simulation_states[s]
         growth_0 = v_0[obj]
         for i in range(duration_0) if not compressed else {0, duration_0 - 1}:
             time: float = (iter_ + i) * tau
-            time_rounded: float = round(time, abs(floor(log(tau, 10))))
+            time_rounded: float = round(time, abs(floor(log10(tau))))
             biomass_i: float = update_biomass(tau, biomass_0, growth_0, i + 1)
             w_i: dict[str, float] = update_kinetics(
                 mn, tau, biomass_0, growth_0, w_0, v_0, i + 1

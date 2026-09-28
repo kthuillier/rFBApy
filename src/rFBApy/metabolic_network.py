@@ -6,21 +6,21 @@ from __future__ import annotations
 import os
 
 from libsbml import (  # type: ignore
-    Model,
-    SBMLDocument,
-    SBMLReader,
-    Reaction,
+    FbcAssociation,
     FbcModelPlugin,
     FbcReactionPlugin,
-    XMLNode,
     GeneProductAssociation,
+    Model,
+    Reaction,
+    SBMLDocument,
+    SBMLReader,
 )
 
 from rFBApy.fba import (
+    DEFAULT_SOLVER,
     FluxBalanceAnalysis,
     GlpkFba,
     GurobiFba,
-    DEFAULT_SOLVER,
 )
 
 
@@ -204,30 +204,32 @@ class MetabolicNetwork:
     # Parsing
     # ==========================================================================
     @classmethod
-    def __parse_gene_formula_rec(cls, xml_node: XMLNode) -> str:
-        name: str = xml_node.getName()
-        if name == "geneProductRef":
-            gene_product_name: str | None = None
-            for i in range(xml_node.getAttributesLength()):
-                if xml_node.getAttrName(i) == "geneProduct":
-                    gene_product_name = xml_node.getAttrValue(i)
-                    break
-            if gene_product_name is None:
-                print("No gene product found...")
-                assert False
-            return f"{gene_product_name}"
-        if xml_node.getNumChildren() == 0:
-            print("Structural error...")
-            assert False
+    def __parse_gene_formula_rec(cls, assoc: FbcAssociation) -> str:
+        # ~ Walk the FbcAssociation object tree directly (FbcAnd/FbcOr/
+        # GeneProductRef), rather than going through
+        # GeneProductAssociation.toXMLNode() (see __parse_gene_formula) --
+        # both give identical results (verified against every reaction of
+        # iJR904 and iML1515), but toXMLNode() rebuilds and leaks a whole new
+        # XML subtree on every single call: its result comes back with
+        # `thisown = False`, so libsbml's SWIG bindings never free it, no
+        # matter what Python does with the wrapper. Called once per
+        # gene-associated reaction in every read_sbml() call - on a
+        # genome-scale model reparsed per condition in a large batch, that
+        # leak alone was enough to grow each worker by ~1.5MB *per
+        # condition*, unbounded (confirmed by isolating read_sbml() in a
+        # loop: RSS climbed steadily while gc-tracked object count stayed
+        # flat - i.e. native memory invisible to Python's own GC).
+        if assoc.isGeneProductRef():
+            return assoc.getGeneProduct() # pyright: ignore[reportAttributeAccessIssue]
         children: list[str] = [
-            cls.__parse_gene_formula_rec(xml_node.getChild(i))
-            for i in range(xml_node.getNumChildren())
+            cls.__parse_gene_formula_rec(child)
+            for child in assoc.getListOfAssociations() # pyright: ignore[reportAttributeAccessIssue]
         ]
         if len(children) == 1:
             return children[0]
-        if name == "and":
+        if assoc.isFbcAnd():
             return "(" + " & ".join(children) + ")"
-        elif name == "or":
+        elif assoc.isFbcOr():
             return "(" + " | ".join(children) + ")"
         print("Unknown fbc operator")
         assert False
@@ -240,11 +242,10 @@ class MetabolicNetwork:
         gpa: GeneProductAssociation = r_fbc.getGeneProductAssociation()
         if gpa is None:
             return ""
-        xml_node: XMLNode = gpa.toXMLNode()
-        if xml_node.getNumChildren() != 1:
-            print("I do not know what happen here...", f"{r.getName()}")
-            assert False
-        return cls.__parse_gene_formula_rec(xml_node.getChild(0))
+        assoc: FbcAssociation | None = gpa.getAssociation()
+        if assoc is None:
+            return ""
+        return cls.__parse_gene_formula_rec(assoc)
 
     @classmethod
     def read_sbml(cls, sbml_file: str) -> MetabolicNetwork:
@@ -260,7 +261,7 @@ class MetabolicNetwork:
 
         # Open SBML file
         sbmld: SBMLDocument = SBMLReader().readSBML(sbml_file)  # type: ignore
-        sbmlm: Model = sbmld.getModel()
+        sbmlm: Model = sbmld.getModel() # pyright: ignore[reportAssignmentType]
         sbml_fbc: FbcModelPlugin = sbmlm.getPlugin("fbc")
 
         # Param
