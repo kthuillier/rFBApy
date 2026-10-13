@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import operator
 from abc import ABC, abstractmethod
-from typing import Any, Callable
+from collections.abc import Callable
 
 from lark import Lark, Transformer
 
@@ -32,7 +32,7 @@ _OPS_NEG: dict[str, str] = {
 # ==============================================================================
 # ~ Abstract class: BoolExpr
 class BoolExpr(ABC):
-    __slots__ = ("_vars", "_threshold", "_signed_vars")
+    __slots__ = ("_signed_vars", "_threshold", "_vars")
 
     @abstractmethod
     def compile(self: BoolExpr) -> Callable[[dict[str, bool | int | float]], bool | None]: ...
@@ -59,7 +59,7 @@ class BoolExpr(ABC):
     def __repr__(self: BoolExpr) -> str: ...
 
     @abstractmethod
-    def __eq__(self: BoolExpr, other: Any) -> bool: ...
+    def __eq__(self: BoolExpr, other: object) -> bool: ...
 
     @abstractmethod
     def __hash__(self: BoolExpr) -> int: ...
@@ -79,7 +79,7 @@ class BoolExpr(ABC):
 
 # ~ Boolean nodes
 class AndExpr(BoolExpr):
-    __slots__ = ("items", "_hash")
+    __slots__ = ("_hash", "items")
 
     def __init__(self, items: list[BoolExpr]):
         self.items = items
@@ -121,11 +121,17 @@ class AndExpr(BoolExpr):
         return AndExpr(eval_items)
 
     def __call__(self: AndExpr, context: dict[str, bool | int | float]) -> bool | None:
-        if any(not x(context) for x in self.items):
-            return False
-        if any(x(context) is None for x in self.items):
-            return None
-        return True
+        # ~ Same result as `compile`: False as soon as one item is False, else
+        # ~ None if some item is undetermined, else True. An undetermined item
+        # ~ must not count as False: "None & True" is None.
+        seen_none = False
+        for x in self.items:
+            v = x(context)
+            if v is False:
+                return False
+            if v is None:
+                seen_none = True
+        return None if seen_none else True
 
     def __iter__(self: AndExpr):
         yield from self.items
@@ -136,7 +142,7 @@ class AndExpr(BoolExpr):
     def __repr__(self: AndExpr) -> str:
         return f"{type(self).__name__}({', '.join(repr(x) for x in self.items)})"
 
-    def __eq__(self: AndExpr, other: Any):
+    def __eq__(self: AndExpr, other: object):
         if not isinstance(other, AndExpr) or len(self.items) != len(other.items):
             return False
         return all(sx == ox for sx, ox in zip(self.items, other.items))
@@ -174,7 +180,7 @@ class AndExpr(BoolExpr):
 
 # ~ Boolean nodes
 class OrExpr(BoolExpr):
-    __slots__ = ("items", "_hash")
+    __slots__ = ("_hash", "items")
 
     def __init__(self: OrExpr, items: list[BoolExpr]):
         self.items = items
@@ -216,11 +222,16 @@ class OrExpr(BoolExpr):
         return OrExpr(eval_items)
 
     def __call__(self: OrExpr, context: dict[str, bool | int | float]) -> bool | None:
-        if any(x(context) for x in self.items):
-            return True
-        if any(x(context) is None for x in self.items):
-            return None
-        return False
+        # ~ Same result as `compile`: True as soon as one item is True, else
+        # ~ None if some item is undetermined, else False
+        seen_none = False
+        for x in self.items:
+            v = x(context)
+            if v is True:
+                return True
+            if v is None:
+                seen_none = True
+        return None if seen_none else False
 
     def __iter__(self: OrExpr):
         yield from self.items
@@ -231,7 +242,7 @@ class OrExpr(BoolExpr):
     def __repr__(self: OrExpr) -> str:
         return f"{type(self).__name__}({', '.join(repr(x) for x in self.items)})"
 
-    def __eq__(self: OrExpr, other: Any):
+    def __eq__(self: OrExpr, other: object):
         if not isinstance(other, OrExpr) or len(self.items) != len(other.items):
             return False
         return all(sx == ox for sx, ox in zip(self.items, other.items))
@@ -306,9 +317,9 @@ class NotExpr(BoolExpr):
         return "!" + str(self.item)
 
     def __repr__(self: NotExpr) -> str:
-        return f"{type(self).__name__}({repr(self.item)})"
+        return f"{type(self).__name__}({self.item!r})"
 
-    def __eq__(self: NotExpr, other: Any):
+    def __eq__(self: NotExpr, other: object):
         if not isinstance(other, NotExpr):
             return False
         return self.item == other.item
@@ -360,9 +371,9 @@ class VarExpr(BoolExpr):
         return self.name
 
     def __repr__(self: VarExpr) -> str:
-        return f"{type(self).__name__}({str(self)})"
+        return f"{type(self).__name__}({self!s})"
 
-    def __eq__(self: VarExpr, other: Any):
+    def __eq__(self: VarExpr, other: object):
         if not isinstance(other, VarExpr):
             return False
         return self.name == other.name
@@ -390,7 +401,7 @@ class VarExpr(BoolExpr):
 
 
 class ThresholdExpr(BoolExpr):
-    __slots__ = ("variable", "op", "value")
+    __slots__ = ("op", "value", "variable")
 
     def __init__(self: ThresholdExpr, variable: VarExpr, op: str, value: float):
         self.variable: VarExpr = variable
@@ -406,7 +417,11 @@ class ThresholdExpr(BoolExpr):
         val = self.value
         def fn(state):
             v = state.get(var, None)
-            return None if v is None else opfn(v, val)
+            # ~ bool(): with a numpy operand (a value read from a DataFrame,
+            # ~ say) the comparison returns a numpy boolean, which is never
+            # ~ `is True` / `is False`. AndExpr and OrExpr test exactly that,
+            # ~ so they would read a false threshold as "not false".
+            return None if v is None else bool(opfn(v, val))
         return fn
 
     def simplify(self: ThresholdExpr) -> ThresholdExpr:
@@ -421,15 +436,15 @@ class ThresholdExpr(BoolExpr):
         opfn = _OPS[self.op]
         val = self.value
         v = context.get(var, None)
-        return None if v is None else opfn(v, val)
+        return None if v is None else bool(opfn(v, val))
 
     def __str__(self: ThresholdExpr) -> str:
-        return f"[{str(self.variable)} {self.op} {str(self.value)}]"
+        return f"[{self.variable!s} {self.op} {self.value!s}]"
 
     def __repr__(self: ThresholdExpr) -> str:
-        return f"{type(self).__name__}({str(self)})"
+        return f"{type(self).__name__}({self!s})"
 
-    def __eq__(self: ThresholdExpr, other: Any):
+    def __eq__(self: ThresholdExpr, other: object):
         if not isinstance(other, ThresholdExpr):
             return False
         return (
@@ -486,7 +501,7 @@ class TrueExpr(BoolExpr):
     def __repr__(self: TrueExpr) -> str:
         return f"{type(self).__name__}"
 
-    def __eq__(self: TrueExpr, other: Any):
+    def __eq__(self: TrueExpr, other: object):
         return isinstance(other, TrueExpr)
 
     def __hash__(self):
@@ -528,7 +543,7 @@ class FalseExpr(BoolExpr):
     def __repr__(self: FalseExpr) -> str:
         return f"{type(self).__name__}"
 
-    def __eq__(self: FalseExpr, other: Any):
+    def __eq__(self: FalseExpr, other: object):
         return isinstance(other, FalseExpr)
 
     def __hash__(self):
@@ -682,6 +697,9 @@ def to_cnf(node: BoolExpr) -> AndExpr:
 # Parser
 # ==============================================================================
 # ~ BNET Grammar ---------------------------------------------------------------
+# > FLOAT accepts a signed exponent ("4e-09", "1e+16"): this is how str() writes
+# > a small or large threshold, hence how `RegulatoryNetwork.to_bnet` writes it,
+# > and the written file must load back.
 bnet_grammar: str = r"""
     expr: or_expr
     or_expr: and_expr ("|" and_expr)*
@@ -693,7 +711,7 @@ bnet_grammar: str = r"""
     VARID: /[a-zA-Z_][a-zA-Z0-9_]*/
     CONSTANT: "0" | "1"
     OP: ">=" | "<=" | "==" | "!=" | ">" | "<"
-    FLOAT: /-?[0-9]+(\.[0-9]+)?(e[0-9]+)?/
+    FLOAT: /-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?/
 
     %import common.WS
     %ignore WS
