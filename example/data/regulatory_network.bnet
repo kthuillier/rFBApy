@@ -1,7 +1,7 @@
-RPcl, Carbon1
-RPO2, !Oxygen
-RPh, Hext
-RPb, R2b
+RPcl, [Carbon1 > 0]
+RPO2, ![Oxygen > 0]
+RPh, [Hext > 0]
+RPb, [R2b > 0]
 Tc2, !RPcl
 Rres, !RPO2
 R5a, !RPO2

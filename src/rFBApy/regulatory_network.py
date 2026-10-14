@@ -30,6 +30,7 @@ from libsbml import (  # type: ignore
 )
 from networkx import MultiDiGraph
 
+from rFBApy.asp import asp_number, asp_string, write_asp
 from rFBApy.bn.bexpr import (
     FALSE,
     TRUE,
@@ -261,7 +262,7 @@ def _or_expr(
         else:
             other.append(_ast_to_expr(child, species_intervals))
     parts: list[BoolExpr] = other + [
-        _level_in_expr(species, levels, species_intervals[species])
+        _level_in_expr(species, levels, species_intervals[species]) # type: ignore
         for species, levels in levels_by_species.items()
     ]
     return parts[0] if len(parts) == 1 else OrExpr(parts)
@@ -394,7 +395,7 @@ def _species_notes(intervals: dict[int, _Interval]) -> str:
     lines = "".join(
         f"<p>STATE {level}:{']' if lo_open else '['}{_fmt_bound(lo)},"
         f"{_fmt_bound(hi)}{'[' if hi_open else ']'}</p>"
-        for level, (lo, lo_open, hi, hi_open) in sorted(intervals.items())
+        for level, (lo, lo_open, hi, hi_open) in sorted(intervals.items()) # type: ignore
     )
     return (
         '<notes><body xmlns="http://www.w3.org/1999/xhtml">'
@@ -440,6 +441,70 @@ def _expr_to_mathml(
             )
         return '<apply><eq/><ci> ' + name + ' </ci><cn type="integer"> 1 </cn></apply>'
     raise NotImplementedError(f"Cannot translate {type(expr).__name__} to MathML")
+
+
+# ==============================================================================
+# ASP export helpers
+# ==============================================================================
+# > fixpoint.lp only knows [A > b] (gt) and [A < b] (lt): each operator is a
+# > DNF over them, as (predicate, sign).
+# ==============================================================================
+_ASP_COMPARISON_OPS: dict[str, list[list[tuple[str, int]]]] = {
+    ">": [[("gt", 1)]],
+    "<": [[("lt", 1)]],
+    "<=": [[("gt", -1)]],
+    ">=": [[("lt", -1)]],
+    "==": [[("gt", -1), ("lt", -1)]],
+    "!=": [[("gt", 1)], [("lt", 1)]],
+}
+
+
+def _asp_canonical_thresholds(
+    expr: BoolExpr,
+    predicates: dict[tuple[str, float, str], VarExpr],
+) -> BoolExpr:
+    # ~ Each gt/lt predicate becomes one placeholder variable, so that the DNF
+    # ~ simplifies [A <= 0] against [A > 0]
+    if isinstance(expr, (AndExpr, OrExpr)):
+        return type(expr)(
+            [_asp_canonical_thresholds(item, predicates) for item in expr.items]
+        )
+    if isinstance(expr, NotExpr):
+        return NotExpr(_asp_canonical_thresholds(expr.item, predicates))
+    if not isinstance(expr, ThresholdExpr):
+        return expr
+    conjunctions: list[BoolExpr] = []
+    for conjunction in _ASP_COMPARISON_OPS[expr.op]:
+        literals: list[BoolExpr] = []
+        for op, sign in conjunction:
+            key: tuple[str, float, str] = (expr.variable.name, float(expr.value), op)
+            # ~ "\0" cannot start a parsed name: no clash with a real variable
+            atom: VarExpr = predicates.setdefault(key, VarExpr(f"\0{len(predicates)}"))
+            literals.append(atom if sign > 0 else NotExpr(atom))
+        conjunctions.append(literals[0] if len(literals) == 1 else AndExpr(literals))
+    return conjunctions[0] if len(conjunctions) == 1 else OrExpr(conjunctions)
+
+
+def _asp_dnf(expr: BoolExpr) -> frozenset[frozenset[tuple[str, int]]]:
+    # ~ Clauses as sets of (name, sign). No clause: false; an empty clause: true
+    clauses: set[frozenset[tuple[str, int]]] = set()
+    for term in expr.to_dnf().items:
+        if term is FALSE:
+            continue
+        literals: list[BoolExpr]
+        if term is TRUE:
+            literals = []
+        elif isinstance(term, AndExpr):
+            literals = term.items
+        else:
+            literals = [term]
+        clauses.add(
+            frozenset(
+                (lit.item.name, -1) if isinstance(lit, NotExpr) else (lit.name, 1)  # type: ignore
+                for lit in literals
+            )
+        )
+    return frozenset(clauses)
 
 
 # ==============================================================================
@@ -544,6 +609,15 @@ class RegulatoryNetwork:
         return {n: None if v is None else (1 if v else 0) for n, v in vals.items()}
 
     # ==========================================================================
+    # Auxiliary functions
+    # ==========================================================================
+    def copy(self: RegulatoryNetwork) -> RegulatoryNetwork:
+        rn: RegulatoryNetwork = RegulatoryNetwork()
+        rn.__rules = self.__rules.copy()
+        rn.__fn = self.__fn.copy()
+        return rn
+
+    # ==========================================================================
     # Display
     # ==========================================================================
     def __str__(self: RegulatoryNetwork) -> str:
@@ -552,7 +626,7 @@ class RegulatoryNetwork:
     def __repr__(self: RegulatoryNetwork) -> str:
         return (
             f"{type(self).__name__}("
-            + ", ".join(f"Rule({n};{repr(rule)}" for n, rule in self.__rules.items())
+            + ", ".join(f"Rule({n};{rule!r}" for n, rule in self.__rules.items())
             + ")"
         )
 
@@ -570,7 +644,7 @@ class RegulatoryNetwork:
         rn = RegulatoryNetwork()
         # ~ Read BNET file -----------------------------------------------------
         with open(bnet, "r", encoding="utf-8") as file:
-            for line in file.readlines():
+            for line in file.readlines():  # noqa: FURB129
                 line: str = line.split("#")[0].strip()  # remove comments
                 if len(line) == 0:
                     continue
@@ -728,6 +802,41 @@ class RegulatoryNetwork:
         )
         with open(filename, "w", encoding="utf-8") as file:
             file.write(doc)
+
+    def to_asp(self: RegulatoryNetwork, filename: str | None = None) -> str:
+        # ~ cst/2, rule/2 and clause/1,3 facts of fixpoint/asp/fixpoint.lp, rules
+        # ~ in DNF; identical clauses share one id across nodes
+        predicates: dict[tuple[str, float, str], VarExpr] = {}
+        dnfs: dict[str, frozenset[frozenset[tuple[str, int]]]] = {
+            n: _asp_dnf(_asp_canonical_thresholds(rule, predicates))
+            for n, rule in self.__rules.items()
+        }
+        # ~ Placeholder -> thr/3 term (flux or concentration: decided in ASP)
+        terms: dict[str, str] = {
+            placeholder.name: f"thr({asp_string(var)},{op},{asp_number(val)})"
+            for (var, val, op), placeholder in predicates.items()
+        }
+
+        lines: list[str] = [
+            f"% Boolean network: {len(dnfs)} nodes, {len(predicates)} threshold predicates"
+        ]
+        clause_ids: dict[frozenset[tuple[str, int]], int] = {}
+        for n, dnf in dnfs.items():
+            if len(dnf) == 0:
+                lines.append(f"cst({asp_string(n)},-1).")
+                continue
+            if frozenset() in dnf:
+                lines.append(f"cst({asp_string(n)},1).")
+                continue
+            for clause in sorted(dnf, key=sorted):
+                if clause not in clause_ids:
+                    clause_ids[clause] = len(clause_ids)
+                    lines.append(f"clause({clause_ids[clause]}).")
+                    for var, sign in sorted(clause):
+                        literal: str = terms.get(var, asp_string(var))
+                        lines.append(f"clause({clause_ids[clause]},{literal},{sign}).")
+                lines.append(f"rule({asp_string(n)},{clause_ids[clause]}).")
+        return write_asp(lines, filename)
 
 
 # ==============================================================================

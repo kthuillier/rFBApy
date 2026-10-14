@@ -16,6 +16,7 @@ from libsbml import (  # type: ignore
     SBMLReader,
 )
 
+from rFBApy.asp import asp_number, asp_string, write_asp
 from rFBApy.fba import (
     DEFAULT_SOLVER,
     FluxBalanceAnalysis,
@@ -332,6 +333,24 @@ class MetabolicNetwork:
     # ==========================================================================
     # Convert
     # ==========================================================================
+    def to_asp(self: MetabolicNetwork, filename: str | None = None) -> str:
+        # ~ reaction/3, bounds/3 and ext/2 facts of fixpoint/asp/fixpoint.lp
+        lines: list[str] = [
+            f"% Metabolic network: {len(self.__reactions)} reactions, "  # noqa: ISC004
+            f"{len(self.__metabolites)} internal and "
+            f"{len(self.__exchanges)} external metabolites"
+        ]
+        for (m, r), coeff in self.__S.items():
+            lines.append(
+                f"reaction({asp_string(r)},{asp_string(m)},{asp_number(coeff)})."
+            )
+        for r, (lb, ub) in self.__bounds.items():
+            lines.append(f"bounds({asp_string(r)},{asp_number(lb)},{asp_number(ub)}).")
+        for m, r in self.__exchanges.items():
+            if r is not None:
+                lines.append(f"ext({asp_string(m)},{asp_string(r)}).")
+        return write_asp(lines, filename)
+
     def instantiate_fba(
         self: MetabolicNetwork,
         objective: str,
