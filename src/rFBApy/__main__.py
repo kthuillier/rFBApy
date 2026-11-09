@@ -119,7 +119,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--lpeps",
         type=float,
         default=ACCURACY,
-        help=f"Epsilon for to-zero clipping of LP values (Default: {ACCURACY})",
+        help="Values within this of 0 are set to 0, for the float solvers "
+             f"(glpk, gurobi); rational is exact (Default: {ACCURACY})",
     )
 
     parser.add_argument(

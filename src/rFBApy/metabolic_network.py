@@ -18,6 +18,7 @@ from libsbml import (  # type: ignore
 
 from rFBApy.asp import asp_number, asp_string, write_asp
 from rFBApy.fba import (
+    ACCURACY,
     DEFAULT_SOLVER,
     FluxBalanceAnalysis,
     GlpkFba,
@@ -64,6 +65,7 @@ class MetabolicNetwork:
         # bounds change afterwards, so this is safe to memoize)
         # ----------------------------------------------------------------------
         self.__external_metabolites: set[str] | None = None
+        self.__all_metabolites: set[str] | None = None
 
     # ==========================================================================
     # Getters
@@ -82,7 +84,12 @@ class MetabolicNetwork:
         self: MetabolicNetwork, external: bool = True, internal: bool = True
     ) -> set[str]:
         if external and internal:
-            return self.__metabolites | self.__external_metabolites_cache()
+            # ~ Cached like the other two: it is called per node and per output row
+            if self.__all_metabolites is None:
+                self.__all_metabolites = (
+                    self.__metabolites | self.__external_metabolites_cache()
+                )
+            return self.__all_metabolites
         if external:
             return self.__external_metabolites_cache()
         if internal:
@@ -355,7 +362,10 @@ class MetabolicNetwork:
         self: MetabolicNetwork,
         objective: str,
         lpsolver: str = DEFAULT_SOLVER,
+        lpeps: float | None = ACCURACY,
     ) -> FluxBalanceAnalysis:
+        # > lpeps: float solvers return as 0 the values within lpeps of it
+        # > (None: no clipping); the rational solver is exact and ignores it
         if objective not in self.__reactions:
             raise ValueError(
                 f"Objective reaction '{objective}' not found in the "
@@ -367,8 +377,26 @@ class MetabolicNetwork:
             if m not in self.__exchanges
         }
         if lpsolver == "glpk":
-            return GlpkFba.load_mn(objective, stoichiometry, self.__bounds.copy())
+            return GlpkFba.load_mn(
+                objective, stoichiometry, self.__bounds.copy(), lpeps
+            )
         if lpsolver == "gurobi":
-            return GurobiFba.load_mn(objective, stoichiometry, self.__bounds.copy())
-        else:
-            raise ValueError(f"Unknown LP Solver: {lpsolver}.")
+            return GurobiFba.load_mn(
+                objective, stoichiometry, self.__bounds.copy(), lpeps
+            )
+        if lpsolver == "rational":
+            # Lazy: the native module is an optional install
+            try:
+                from rFBApy.fba.fba_rational import RationalFba
+            except ModuleNotFoundError as error:
+                if error.name != "rational_lp_solver":
+                    raise
+                raise ModuleNotFoundError(
+                    "lpsolver 'rational' needs rational_lp_solver: "
+                    "pip install ../rational_lp_solver",
+                    name=error.name,
+                ) from error
+            return RationalFba.load_mn(
+                objective, stoichiometry, self.__bounds.copy(), lpeps
+            )
+        raise ValueError(f"Unknown LP Solver: {lpsolver}.")

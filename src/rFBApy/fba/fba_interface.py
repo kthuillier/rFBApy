@@ -7,6 +7,9 @@ from typing import Literal
 
 from libsbml import FbcReactionPlugin, Model, SBMLDocument, SBMLReader  # type: ignore
 
+# ~ Float solvers: values within this of 0 are numerical noise and returned as 0
+ACCURACY: float = 1e-8
+
 
 # ==============================================================================
 # Flux Balance Analysis - Interface
@@ -16,6 +19,8 @@ class FluxBalanceAnalysis:
     def __init__(self: FluxBalanceAnalysis) -> None:
         self._bounds: dict[str, tuple[float, float]] = {}
         self._objective: str = ""
+        # ~ Clipping of the values returned by solve(); None: no clipping
+        self._lpeps: float | None = ACCURACY
         # ~ pFBA: reaction -> auxiliary |flux| variable, and the two
         # objective-coefficient vectors switched between the growth
         # maximization step and the total-flux minimization step
@@ -101,8 +106,8 @@ class FluxBalanceAnalysis:
     # Initialization from SBML file
     # --------------------------------------------------------------------------
     @classmethod
-    def load_sbml(cls: type[FluxBalanceAnalysis], sbml: str, objective: str) \
-            -> FluxBalanceAnalysis:
+    def load_sbml(cls: type[FluxBalanceAnalysis], sbml: str, objective: str,
+                  lpeps: float | None = ACCURACY) -> FluxBalanceAnalysis:
         # Parse SBML
         stoichiometry, bounds = cls.__read_sbml(sbml)
         # Initialize the FBA object
@@ -110,6 +115,7 @@ class FluxBalanceAnalysis:
             objective, stoichiometry, bounds
         )
         fba._objective = objective
+        fba._lpeps = lpeps
         # ~ pFBA's |flux| auxiliary variables/constraints are NOT built here:
         # they roughly double the model size (one aux var + 2 constraints per
         # reaction), which is wasted work -- and, on a size-limited license,
@@ -128,7 +134,8 @@ class FluxBalanceAnalysis:
     def load_mn(cls: type[FluxBalanceAnalysis],
                 objective: str,
                 stoichiometry: dict[tuple[str, str], float],
-                bounds: dict[str, tuple[float, float]]) \
+                bounds: dict[str, tuple[float, float]],
+                lpeps: float | None = ACCURACY) \
             -> FluxBalanceAnalysis:
         # Adapt the stoichiometry matrix to the needed format
         stoichiometry_: dict[str, set[tuple[float, str]]] = {}
@@ -139,6 +146,7 @@ class FluxBalanceAnalysis:
             objective, stoichiometry_, bounds
         )
         fba._objective = objective
+        fba._lpeps = lpeps
         # ~ See load_sbml(): pFBA setup is deferred to the first
         # solve(pfba=True) call, not done unconditionally here.
         fba.__pfba_reactions = frozenset(bounds.keys())
@@ -224,6 +232,12 @@ class FluxBalanceAnalysis:
     # > (ii) fix it to its optimum and minimize the total absolute flux over
     # > every reaction, so the returned flux vector is the most parsimonious
     # > one achieving the optimal objective value.
+    # >
+    # > Returns (opt, fluxes): opt is None iff the LP is infeasible (then fluxes
+    # > is {}), inf if unbounded, else the optimum of the objective reaction;
+    # > fluxes has every reaction (no auxiliary variable). Values are clean: each
+    # > backend removes its own numerical noise (float backends clip to 0 what
+    # > is within lpeps of it, see _lpeps), so callers use them as they are.
     def solve(
         self: FluxBalanceAnalysis,
         bounds: dict[str, tuple[float, float]] | None = None,
@@ -259,7 +273,15 @@ class FluxBalanceAnalysis:
                     lp_state = self.__reaction_state()
                 self._set_objective(self.__fba_coeffs, 'max')
         self.__reset_bounds()
-        return opt, lp_state
+        if opt is None or self._lpeps is None:
+            return opt, lp_state
+        return self.__clip(opt, self._lpeps), {
+            r: self.__clip(v, self._lpeps) for r, v in lp_state.items()
+        }
+
+    @staticmethod
+    def __clip(value: float, lpeps: float) -> float:
+        return value if abs(value) > lpeps else 0.0
 
     def __reaction_state(self: FluxBalanceAnalysis) -> dict[str, float]:
         return {

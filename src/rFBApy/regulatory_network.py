@@ -574,6 +574,10 @@ class RegulatoryNetwork:
     def __iter__(self: RegulatoryNetwork):
         yield from self.__rules
 
+    def __contains__(self: RegulatoryNetwork, node: object) -> bool:
+        # ~ Without it, `node in bn` scans the generator of __iter__: O(nodes)
+        return node in self.__rules
+
     def __getitem__(self: RegulatoryNetwork, node: str) -> BoolExpr:
         return self.__rules[node]
 

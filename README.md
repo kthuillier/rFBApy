@@ -9,7 +9,7 @@ Python >= 3.10.
 
 Dependencies (pulled by pip): `python-libsbml`, `gurobipy`, `swiglpk`, `pandas`, `lark`, `networkx`, `clingo`, `merrinasp` (from GitHub), `pulp<4`.
 
-LP solver: GLPK by default. Gurobi works too (`--lpsolver gurobi`) but needs a license.
+LP solver: GLPK by default. Gurobi works too (`--lpsolver gurobi`) but needs a license. `--lpsolver rational` solves exactly over the rationals, free of numerical noise.
 
 ### From the local repository
 
@@ -83,8 +83,8 @@ rfbapy --sbml example/data/metabolic_network.sbml \
 
 - `--sbml`, `--obj`, `--experiment`, `--out`: required.
 - `--bnet` or `--sbmlqual`: regulatory network. Optional.
-- `--lpsolver glpk|gurobi`: default `glpk`.
-- `--lpeps`: fluxes below this are set to 0. Default `1e-8`.
+- `--lpsolver glpk|gurobi|rational`: default `glpk`.
+- `--lpeps`: values within this of 0 are set to 0, for the float solvers (`glpk`, `gurobi`). Default `1e-8`.
 - `--no-pfba`: plain FBA instead of parsimonious FBA.
 - `--compressed`: keep only the first and last row of each stable state.
 

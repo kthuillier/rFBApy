@@ -142,7 +142,8 @@ class Cache:
         # ~ its own LP: its auxiliary variables would slow down the plain solves
         key = (objective, lpsolver, pfba)
         if key not in self._fbas:
-            self._fbas[key] = mn.instantiate_fba(objective, lpsolver)
+            # ~ lpeps=None: cuts keep fluxes above their own threshold (cut.UNUSED)
+            self._fbas[key] = mn.instantiate_fba(objective, lpsolver, lpeps=None)
         return self._fbas[key]
 
     def maximum(

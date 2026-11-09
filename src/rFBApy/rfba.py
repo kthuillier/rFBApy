@@ -22,7 +22,7 @@ from rFBApy.bn.bexpr import (
     ThresholdExpr,
     VarExpr,
 )
-from rFBApy.fba import DEFAULT_SOLVER, FluxBalanceAnalysis
+from rFBApy.fba import ACCURACY, DEFAULT_SOLVER, FluxBalanceAnalysis
 from rFBApy.metabolic_network import MetabolicNetwork
 from rFBApy.regulatory_network import RegulatoryNetwork
 
@@ -42,7 +42,6 @@ COLUMN_VERIFIED: str = "verified"
 COLUMN_OPTIMUM: str = "optimum"
 COLUMN_DURATION: str = "duration"
 
-ACCURACY: float = 1e-8
 BIOMASS: float = 1e-2
 TAU: float = 1e-2
 # ~ Fixpoints: smallest flux counted as non-zero (`eps` of fixpoint.lp), and
@@ -316,7 +315,6 @@ def next_iter(
     biomass: float,
     duration: int,
     settings: dict[str, bool | int | float] = {},  # noqa: B006
-    lpeps: float = ACCURACY,
     pfba: bool = True,
 ) -> tuple[dict[str, float], dict[str, float], dict[str, int | None], float, int]:
     next_biomass: float = update_biomass(tau, biomass, v[obj], duration)
@@ -349,12 +347,6 @@ def next_iter(
     if opt is None or opt < 0:  # FIXME
         opt = 0.0
         next_v = {r: 0.0 for r in mn.reactions()}
-    else:
-        opt = opt if abs(opt) > lpeps else 0.0
-        next_v = {
-            r: vr if abs(vr) > lpeps else 0.0
-            for r, vr in next_v.items()
-        }
 
     next_duration: int = estimate_state_duration(
         mn,
@@ -413,7 +405,7 @@ def simulate_rfba(
         if r in mn.reactions():
             mn.set_bound(r, lb, ub)
 
-    fba: FluxBalanceAnalysis = mn.instantiate_fba(obj, lpsolver=lpsolver)
+    fba: FluxBalanceAnalysis = mn.instantiate_fba(obj, lpsolver=lpsolver, lpeps=lpeps)
 
     bn = init_regulatory_network(mn, bn, mutations, settings)
 
@@ -462,7 +454,6 @@ def simulate_rfba(
             biomass_0,
             duration_0,
             settings=settings,
-            lpeps=lpeps,
             pfba=pfba,
         )
         if i + duration_1 >= iter + 1:
@@ -637,7 +628,8 @@ def check_fixpoint(
         problems.append(f"flux of the objective {obj} below {lpeps:g}: {v.get(obj, 0.0):g}")
 
     # ~ The FBA optimum of the updated state; flux predicates are read-outs, not bounds
-    fba = mn.instantiate_fba(obj, lpsolver)
+    # ~ lpeps=None: the fixpoint reads raw fluxes with its own thresholds
+    fba = mn.instantiate_fba(obj, lpsolver, lpeps=None)
     medium = {m: w[m] for m in provided}
     optimum, _ = fba.solve(state_bounds(mn, medium, switched_off), pfba=False)
     if optimum is None:
