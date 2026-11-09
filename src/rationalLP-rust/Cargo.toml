@@ -1,0 +1,39 @@
+[package]
+name = "rational_lp_solver"
+description = "Exact rational linear programming (revised simplex, float-guided), with FBA/pFBA, for rFBApy"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "GPL-3.0-or-later"
+authors = ["Kerian Thuillier <kerian.thuillier@gmail.com>"]
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# The Python module `rFBApy.rational_lp_solver` (pip builds it, with maturin, with this feature)
+python = ["dep:pyo3"]
+
+[dependencies]
+num-bigint = "0.4"
+num-rational = "0.4"
+num-traits = "0.2"
+pyo3 = { version = "0.25", optional = true, features = ["extension-module", "abi3-py310"] }
+
+[dev-dependencies]
+proptest = "1"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Arithmetic code names its operands as in the formulas (`d`, `y`, `theta`...).
+many_single_char_names = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4

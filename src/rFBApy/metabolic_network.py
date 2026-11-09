@@ -385,17 +385,8 @@ class MetabolicNetwork:
                 objective, stoichiometry, self.__bounds.copy(), lpeps
             )
         if lpsolver == "rational":
-            # Lazy: the native module is an optional install
-            try:
-                from rFBApy.fba.fba_rational import RationalFba
-            except ModuleNotFoundError as error:
-                if error.name != "rational_lp_solver":
-                    raise
-                raise ModuleNotFoundError(
-                    "lpsolver 'rational' needs rational_lp_solver: "
-                    "pip install ../rational_lp_solver",
-                    name=error.name,
-                ) from error
+            from rFBApy.fba.fba_rational import RationalFba
+
             return RationalFba.load_mn(
                 objective, stoichiometry, self.__bounds.copy(), lpeps
             )

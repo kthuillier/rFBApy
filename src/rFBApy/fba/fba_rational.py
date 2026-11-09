@@ -3,9 +3,8 @@
 # ==============================================================================
 from __future__ import annotations
 
-from rational_lp_solver import Fba
-
 from rFBApy.fba.fba_interface import FluxBalanceAnalysis
+from rFBApy.rational_lp_solver import Fba
 
 
 # ==============================================================================

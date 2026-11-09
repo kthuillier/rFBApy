@@ -5,7 +5,7 @@ Python 3 module `rFBApy` for rFBA simulations based on
 
 ## Install
 
-Python >= 3.10.
+Python >= 3.10, and a [Rust toolchain](https://rustup.rs) >= 1.88: pip builds the exact LP solver (`src/rationalLP-rust/`, see below) when it installs rFBApy.
 
 Dependencies (pulled by pip): `python-libsbml`, `gurobipy`, `swiglpk`, `pandas`, `lark`, `networkx`, `clingo`, `merrinasp` (from GitHub), `pulp<4`.
 
@@ -26,6 +26,14 @@ Install via pip:
 ```sh
 pip install git+https://github.com/kthuillier/rFBApy
 ```
+
+### Exact LP solver (`src/rationalLP-rust/`)
+
+`--lpsolver rational` runs a bounded-variable revised simplex written in Rust (sparse LU of the basis, Markowitz pivoting): a float pass guesses the optimal basis, then the same algorithm in exact rational arithmetic decides the result, so float tolerances never change an optimum. pFBA splits each reaction into two non-negative columns (v = v⁺ − v⁻) and needs no extra row. Floats are read as the decimal Python prints for them (`0.1` is `1/10`). It is the extension module `rFBApy.rational_lp_solver`.
+
+Rust checks, from `src/rationalLP-rust/`: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`.
+
+References: Dhiflaoui et al. (2003), *Certifying and repairing solutions to large LPs*, SODA; Applegate, Cook, Dash, Espinoza (2007), *Exact solutions to linear programming problems*, Oper. Res. Lett. 35(6); Bland (1977), *New finite pivoting rules for the simplex method*, Math. Oper. Res. 2(2); Suhl & Suhl (1990), *Computing sparse LU factorizations for large-scale linear programming bases*; Lewis et al. (2010), *Omic data from evolved E. coli are consistent with computed optimal growth from genome-scale models*, Mol. Syst. Biol. 6:390 (pFBA).
 
 ## Usage Examples
 

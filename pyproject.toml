@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.5,<2"]
+build-backend = "maturin"
 
 [project]
 name = "rFBApy"
@@ -42,6 +42,10 @@ Repository = "https://github.com/kthuillier/rFBApy/issues"
 rfbapy = "rFBApy.__main__:main"
 rfbapy-fixpoint = "rFBApy.__main__:main_fixpoint"
 
-[tool.setuptools.package-data]
-rFBApy = ["py.typed", "fixpoint/asp/*.lp"]
+[tool.maturin]
+# The exact LP solver (Rust, see src/rationalLP-rust/) is the extension module rFBApy.rational_lp_solver
+manifest-path = "src/rationalLP-rust/Cargo.toml"
+python-source = "src"
+module-name = "rFBApy.rational_lp_solver"
+features = ["python"]
 
