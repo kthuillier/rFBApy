@@ -480,6 +480,12 @@ def simulate_rfba(
     for s in range(len(simulation_states)):
         v_0, w_0, x_0, biomass_0, duration_0 = simulation_states[s]
         growth_0 = v_0[obj]
+        # ~ Fluxes and regulatory states are constant over the interval
+        constant_0: dict[str, float | int | None] = {
+            react_cols[r]: v_0[r] for r in v_0
+        }
+        if bn is not None:
+            constant_0 |= {reg_cols[n]: x_0[n] for n in x_0 if n in reg_cols}
         for i in range(duration_0) if not compressed else {0, duration_0 - 1}:
             time: float = (iter_ + i) * tau
             time_rounded: float = round(time, abs(floor(log10(tau))))
@@ -493,14 +499,8 @@ def simulate_rfba(
                     "biomass": biomass_i,
                 }
                 | {met_cols[m]: w_i[m] for m in w_i}
-                | {react_cols[r]: v_0[r] for r in v_0}
+                | constant_0
             )  # type: ignore
-            if bn is not None:
-                state_i |= {
-                    reg_cols[n]: x_0[n]
-                    for n in x_0
-                    if n not in mn.metabolites()
-                }
             sim.append(state_i)
 
         iter_ += duration_0

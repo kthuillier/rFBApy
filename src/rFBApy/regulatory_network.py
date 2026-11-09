@@ -7,6 +7,7 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
+from functools import cache
 
 from networkx import MultiDiGraph
 
@@ -25,6 +26,22 @@ from rFBApy.bn.bexpr import (
     parse,
 )
 from rFBApy.sbml import attr, local, read_model, sections
+
+# ==============================================================================
+# Rule compilation
+# ==============================================================================
+# > Rule strings repeat (the "1"/"0" gene defaults, GPR rules rewritten at each
+# > simulation), and expression trees are never modified once built (copy()
+# > already shares them), so each string is parsed and compiled once per process.
+# ==============================================================================
+Rule = Callable[[dict[str, bool | int | float]], bool | None]
+
+
+@cache
+def _compile(rule: str) -> tuple[BoolExpr, Rule]:
+    expr: BoolExpr = parse(rule)
+    return expr, expr.simplify().compile()
+
 
 # ==============================================================================
 # SBML-Qual parsing helpers
@@ -530,9 +547,7 @@ class RegulatoryNetwork:
     # ==========================================================================
     def __init__(self: RegulatoryNetwork):
         self.__rules: dict[str, BoolExpr] = {}
-        self.__fn: dict[
-            str, Callable[[dict[str, bool | int | float]], bool | None]
-        ] = {}
+        self.__fn: dict[str, Rule] = {}
 
         self.__components: frozenset[str] | None = None
         self.__constants: frozenset[str] | None = None
@@ -602,8 +617,11 @@ class RegulatoryNetwork:
     ) -> None:
         if isinstance(rule, int):
             rule = str(rule)
-        self.__rules[node] = rule if isinstance(rule, BoolExpr) else parse(rule)
-        self.__fn[node] = self.__rules[node].simplify().compile()
+        if isinstance(rule, BoolExpr):
+            self.__rules[node] = rule
+            self.__fn[node] = rule.simplify().compile()
+        else:
+            self.__rules[node], self.__fn[node] = _compile(rule)
         # ~ Reset all memoized elements
         self.__thresholds = None
         self.__constants = None
