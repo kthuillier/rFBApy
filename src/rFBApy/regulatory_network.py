@@ -5,29 +5,9 @@ from __future__ import annotations
 
 import os
 import re
+import xml.etree.ElementTree as ET
 from collections.abc import Callable
 
-from libsbml import (  # type: ignore
-    AST_CONSTANT_FALSE,
-    AST_CONSTANT_TRUE,
-    AST_LOGICAL_AND,
-    AST_LOGICAL_NOT,
-    AST_LOGICAL_OR,
-    AST_NAME,
-    AST_RELATIONAL_EQ,
-    AST_RELATIONAL_GEQ,
-    AST_RELATIONAL_GT,
-    AST_RELATIONAL_LEQ,
-    AST_RELATIONAL_LT,
-    AST_RELATIONAL_NEQ,
-    ASTNode,
-    Model,
-    QualitativeSpecies,
-    QualModelPlugin,
-    SBMLDocument,
-    SBMLReader,
-    Transition,
-)
 from networkx import MultiDiGraph
 
 from rFBApy.asp import asp_number, asp_string, write_asp
@@ -44,6 +24,7 @@ from rFBApy.bn.bexpr import (
     VarExpr,
     parse,
 )
+from rFBApy.sbml import attr, local, read_model, sections
 
 # ==============================================================================
 # SBML-Qual parsing helpers
@@ -61,13 +42,13 @@ _INTERVAL_RE = re.compile(
     r"(\+?inf|[+-]?\d+(?:\.\d+)?)\s*([\[\]])$"
 )
 
-_AST_COMPARISON_OPS: dict[int, str] = {
-    AST_RELATIONAL_EQ: "==",
-    AST_RELATIONAL_NEQ: "!=",
-    AST_RELATIONAL_GEQ: ">=",
-    AST_RELATIONAL_LEQ: "<=",
-    AST_RELATIONAL_GT: ">",
-    AST_RELATIONAL_LT: "<",
+_MATHML_COMPARISON_OPS: dict[str, str] = {
+    "eq": "==",
+    "neq": "!=",
+    "geq": ">=",
+    "leq": "<=",
+    "gt": ">",
+    "lt": "<",
 }
 
 # > Bounds of a STATE interval: (lo, lo_open, hi, hi_open); `None` means "ND"
@@ -223,25 +204,58 @@ def _level_expr(
     raise NotImplementedError(f"Unsupported SBML-Qual comparison operator: {op}")
 
 
-def _name_and_level(left: ASTNode, right: ASTNode) -> tuple[str, int] | None:
-    if left.isName() and (right.isInteger() or right.isReal()):
-        return left.getName(), round(right.getValue())
-    if right.isName() and (left.isInteger() or left.isReal()):
-        return right.getName(), round(left.getValue())
+def _unwrap(node: ET.Element) -> ET.Element:
+    # ~ <apply><apply>...</apply></apply> is the inner <apply>
+    while local(node.tag) == "apply" and len(node) == 1 and local(node[0].tag) == "apply":
+        node = node[0]
+    return node
+
+
+def _op(node: ET.Element) -> str:
+    # ~ MathML: <apply><and/>...</apply> is the operator "and"; a leaf (<ci>,
+    # <cn>, <true/>) is its own tag
+    node = _unwrap(node)
+    return local(node[0].tag) if local(node.tag) == "apply" else local(node.tag)
+
+
+def _args(node: ET.Element) -> list[ET.Element]:
+    node = _unwrap(node)
+    return list(node)[1:] if local(node.tag) == "apply" else []
+
+
+def _number(node: ET.Element) -> float | None:
+    if local(node.tag) != "cn":
+        return None
+    try:
+        return float("".join(node.itertext()).strip())
+    except ValueError:
+        return None
+
+
+def _name(node: ET.Element) -> str:
+    return "".join(node.itertext()).strip()
+
+
+def _name_and_level(left: ET.Element, right: ET.Element) -> tuple[str, int] | None:
+    value: float | None
+    if local(left.tag) == "ci" and (value := _number(right)) is not None:
+        return _name(left), round(value)
+    if local(right.tag) == "ci" and (value := _number(left)) is not None:
+        return _name(right), round(value)
     return None
 
 
-def _flatten_or(node: ASTNode) -> list[ASTNode]:
-    if node.getType() != AST_LOGICAL_OR:
+def _flatten_or(node: ET.Element) -> list[ET.Element]:
+    if _op(node) != "or":
         return [node]
-    children: list[ASTNode] = []
-    for i in range(node.getNumChildren()):
-        children.extend(_flatten_or(node.getChild(i)))
+    children: list[ET.Element] = []
+    for child in _args(node):
+        children.extend(_flatten_or(child))
     return children
 
 
 def _or_expr(
-    node: ASTNode,
+    node: ET.Element,
     species_intervals: dict[str, dict[int, _Interval] | None],
 ) -> BoolExpr:
     # > Flatten nested "or"s and merge equality checks against the same
@@ -252,8 +266,8 @@ def _or_expr(
     other: list[BoolExpr] = []
     for child in _flatten_or(node):
         name_level = (
-            _name_and_level(child.getChild(0), child.getChild(1))
-            if child.getType() == AST_RELATIONAL_EQ and child.getNumChildren() == 2
+            _name_and_level(*_args(child))
+            if _op(child) == "eq" and len(_args(child)) == 2
             else None
         )
         if name_level is not None and species_intervals.get(name_level[0]) is not None:
@@ -269,33 +283,29 @@ def _or_expr(
 
 
 def _ast_to_expr(
-    node: ASTNode,
+    node: ET.Element,
     species_intervals: dict[str, dict[int, _Interval] | None],
 ) -> BoolExpr:
-    node_type: int = node.getType()
-    if node_type == AST_LOGICAL_AND:
-        return AndExpr(
-            [
-                _ast_to_expr(node.getChild(i), species_intervals)
-                for i in range(node.getNumChildren())
-            ]
-        )
-    if node_type == AST_LOGICAL_OR:
+    op: str = _op(node)
+    args: list[ET.Element] = _args(node)
+    if op == "and":
+        return AndExpr([_ast_to_expr(a, species_intervals) for a in args])
+    if op == "or":
         return _or_expr(node, species_intervals)
-    if node_type == AST_LOGICAL_NOT:
-        return NotExpr(_ast_to_expr(node.getChild(0), species_intervals))
-    if node_type == AST_CONSTANT_TRUE:
+    if op == "not":
+        return NotExpr(_ast_to_expr(args[0], species_intervals))
+    if op == "true":
         return TRUE
-    if node_type == AST_CONSTANT_FALSE:
+    if op == "false":
         return FALSE
-    if node_type == AST_NAME:
-        return _level_expr(node.getName(), "==", 1, species_intervals)
-    if node_type in _AST_COMPARISON_OPS:
-        if node.getNumChildren() != 2:
+    if op == "ci":
+        return _level_expr(_name(node), "==", 1, species_intervals)
+    if op in _MATHML_COMPARISON_OPS:
+        if len(args) != 2:
             raise NotImplementedError(
                 "SBML-Qual comparison node without exactly 2 children"
             )
-        name_level = _name_and_level(node.getChild(0), node.getChild(1))
+        name_level = _name_and_level(args[0], args[1])
         if name_level is None:
             raise NotImplementedError(
                 "SBML-Qual comparisons must be between a qualitative species and "
@@ -303,27 +313,31 @@ def _ast_to_expr(
             )
         species, level = name_level
         return _level_expr(
-            species, _AST_COMPARISON_OPS[node_type], level, species_intervals
+            species, _MATHML_COMPARISON_OPS[op], level, species_intervals
         )
-    raise NotImplementedError(f"Unsupported SBML-Qual MathML node type: {node_type}")
+    raise NotImplementedError(f"Unsupported SBML-Qual MathML node type: {op}")
 
 
 def _transition_expr(
-    transition: Transition,
+    transition: ET.Element,
     species_intervals: dict[str, dict[int, _Interval] | None],
 ) -> BoolExpr:
-    default_level: int = transition.getDefaultTerm().getResultLevel()
-    fts = transition.getListOfFunctionTerms()
-    terms_1: list[ASTNode] = []
-    terms_0: list[ASTNode] = []
-    for i in range(fts.size()):
-        ft = fts.get(i)
-        (terms_1 if ft.getResultLevel() == 1 else terms_0).append(ft.getMath())
+    tid: str | None = attr(transition, "id")
+    default_level: int = 0
+    terms_1: list[ET.Element] = []
+    terms_0: list[ET.Element] = []
+    for part in sections(transition).get("listOfFunctionTerms", ()):
+        level: int = int(attr(part, "resultLevel") or 0)
+        if local(part.tag) == "defaultTerm":
+            default_level = level
+        elif local(part.tag) == "functionTerm":
+            math: ET.Element = next(e for e in part if local(e.tag) == "math")
+            (terms_1 if level == 1 else terms_0).append(math[0])
 
     if len(terms_1) > 0 and len(terms_0) == 0:
         if default_level != 0:
             raise NotImplementedError(
-                f"Transition '{transition.getId()}' has resultLevel-1 function "
+                f"Transition '{tid}' has resultLevel-1 function "
                 f"terms but a non-zero default level ({default_level})"
             )
         exprs = [_ast_to_expr(m, species_intervals) for m in terms_1]
@@ -331,7 +345,7 @@ def _transition_expr(
     if len(terms_0) > 0 and len(terms_1) == 0:
         if default_level != 1:
             raise NotImplementedError(
-                f"Transition '{transition.getId()}' has resultLevel-0 function "
+                f"Transition '{tid}' has resultLevel-0 function "
                 f"terms but a non-one default level ({default_level})"
             )
         exprs = [_ast_to_expr(m, species_intervals) for m in terms_0]
@@ -339,7 +353,7 @@ def _transition_expr(
     if len(terms_1) == 0 and len(terms_0) == 0:
         return TRUE if default_level == 1 else FALSE
     raise NotImplementedError(
-        f"Transition '{transition.getId()}' mixes resultLevel-0 and resultLevel-1 "
+        f"Transition '{tid}' mixes resultLevel-0 and resultLevel-1 "
         "function terms, which is not supported"
     )
 
@@ -663,35 +677,35 @@ class RegulatoryNetwork:
     # --------------------------------------------------------------------------
     @staticmethod
     def load_sbml(sbml: str) -> RegulatoryNetwork:
-        if not os.path.isfile(sbml):
-            raise FileNotFoundError(f"Regulatory network SBML file not found: {sbml}")
         # ~ Read SBML-Qual file --------------------------------------------------
-        sbmld: SBMLDocument = SBMLReader().readSBML(sbml)  # type: ignore
-        sbmlm: Model = sbmld.getModel()  # type: ignore
-        qual: QualModelPlugin | None = (
-            sbmlm.getPlugin("qual") if sbmlm is not None else None
-        )
-        if qual is None:
+        model: ET.Element = read_model(sbml)
+        lists: dict[str, ET.Element] = sections(model)
+        if "listOfQualitativeSpecies" not in lists and "listOfTransitions" not in lists:
             raise ValueError(f"Not an SBML-Qual (regulatory network) file: {sbml}")
         # ~ Species STATE intervals (thresholded species) / booleans (no notes) --
         species_intervals: dict[str, dict[int, _Interval] | None] = {}
-        for i in range(qual.getNumQualitativeSpecies()):
-            sp: QualitativeSpecies = qual.getQualitativeSpecies(i)
-            species_intervals[sp.getId()] = (
-                _parse_state_intervals(sp.getNotesString()) if sp.isSetNotes() else None
+        for sp in lists.get("listOfQualitativeSpecies", ()):
+            notes: ET.Element | None = next(
+                (e for e in sp if local(e.tag) == "notes"), None
+            )
+            species_intervals[str(attr(sp, "id"))] = (
+                _parse_state_intervals(ET.tostring(notes, encoding="unicode"))
+                if notes is not None
+                else None
             )
         # ~ Initialize output ------------------------------------------------------
         rn = RegulatoryNetwork()
         # ~ Translate each transition into a Boolean rule -------------------------
-        for i in range(qual.getNumTransitions()):
-            transition: Transition = qual.getTransition(i)
-            outputs = transition.getListOfOutputs()
-            if outputs.size() != 1:
+        for transition in lists.get("listOfTransitions", ()):
+            outputs: list[ET.Element] = list(
+                sections(transition).get("listOfOutputs", ())
+            )
+            if len(outputs) != 1:
                 raise NotImplementedError(
-                    f"Transition '{transition.getId()}' does not have exactly "
+                    f"Transition '{attr(transition, 'id')}' does not have exactly "
                     "one output"
                 )
-            node: str = outputs.get(0).getQualitativeSpecies()
+            node: str = str(attr(outputs[0], "qualitativeSpecies"))
             rn[node] = _transition_expr(transition, species_intervals)
         # ~ Output -------------------------------------------------------------
         return rn

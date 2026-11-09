@@ -3,18 +3,7 @@
 # ==============================================================================
 from __future__ import annotations
 
-import os
-
-from libsbml import (  # type: ignore
-    FbcAssociation,
-    FbcModelPlugin,
-    FbcReactionPlugin,
-    GeneProductAssociation,
-    Model,
-    Reaction,
-    SBMLDocument,
-    SBMLReader,
-)
+import xml.etree.ElementTree as ET
 
 from rFBApy.asp import asp_number, asp_string, write_asp
 from rFBApy.fba import (
@@ -24,6 +13,7 @@ from rFBApy.fba import (
     GlpkFba,
     GurobiFba,
 )
+from rFBApy.sbml import attr, local, read_model, sections
 
 
 # ==============================================================================
@@ -212,127 +202,81 @@ class MetabolicNetwork:
     # Parsing
     # ==========================================================================
     @classmethod
-    def __parse_gene_formula_rec(cls, assoc: FbcAssociation) -> str:
-        # ~ Walk the FbcAssociation object tree directly (FbcAnd/FbcOr/
-        # GeneProductRef), rather than going through
-        # GeneProductAssociation.toXMLNode() (see __parse_gene_formula) --
-        # both give identical results (verified against every reaction of
-        # iJR904 and iML1515), but toXMLNode() rebuilds and leaks a whole new
-        # XML subtree on every single call: its result comes back with
-        # `thisown = False`, so libsbml's SWIG bindings never free it, no
-        # matter what Python does with the wrapper. Called once per
-        # gene-associated reaction in every read_sbml() call - on a
-        # genome-scale model reparsed per condition in a large batch, that
-        # leak alone was enough to grow each worker by ~1.5MB *per
-        # condition*, unbounded (confirmed by isolating read_sbml() in a
-        # loop: RSS climbed steadily while gc-tracked object count stayed
-        # flat - i.e. native memory invisible to Python's own GC).
-        if assoc.isGeneProductRef():
-            return assoc.getGeneProduct() # pyright: ignore[reportAttributeAccessIssue]
-        children: list[str] = [
-            cls.__parse_gene_formula_rec(child)
-            for child in assoc.getListOfAssociations() # pyright: ignore[reportAttributeAccessIssue]
-        ]
+    def __parse_gene_formula(cls, assoc: ET.Element) -> str:
+        # ~ <fbc:geneProductRef>, <fbc:and> or <fbc:or> (of such elements)
+        kind: str = local(assoc.tag)
+        if kind == "geneProductRef":
+            return attr(assoc, "geneProduct") or ""
+        children: list[str] = [cls.__parse_gene_formula(c) for c in assoc]
         if len(children) == 1:
             return children[0]
-        if assoc.isFbcAnd():
+        if kind == "and":
             return "(" + " & ".join(children) + ")"
-        elif assoc.isFbcOr():
+        if kind == "or":
             return "(" + " | ".join(children) + ")"
-        print("Unknown fbc operator")
-        assert False
-
-    @classmethod
-    def __parse_gene_formula(cls, r: Reaction) -> str:
-        r_fbc: FbcReactionPlugin | None = r.getPlugin("fbc")
-        if r_fbc is None:
-            return ""
-        gpa: GeneProductAssociation = r_fbc.getGeneProductAssociation()
-        if gpa is None:
-            return ""
-        assoc: FbcAssociation | None = gpa.getAssociation()
-        if assoc is None:
-            return ""
-        return cls.__parse_gene_formula_rec(assoc)
+        raise ValueError(f"Unknown fbc operator: {kind}")
 
     @classmethod
     def read_sbml(cls, sbml_file: str) -> MetabolicNetwork:
-        name: str
-
-        if not os.path.isfile(sbml_file):
-            raise FileNotFoundError(
-                f"SBML metabolic network file not found: {sbml_file}"
-            )
-
-        # Object initialization
         mn: MetabolicNetwork = cls()
-
-        # Open SBML file
-        sbmld: SBMLDocument = SBMLReader().readSBML(sbml_file)  # type: ignore
-        sbmlm: Model = sbmld.getModel() # pyright: ignore[reportAssignmentType]
-        sbml_fbc: FbcModelPlugin = sbmlm.getPlugin("fbc")
-
-        # Param
-        param: dict[str, float] = {}
-        for parameter in sbmlm.getListOfParameters():
-            param[parameter.getId()] = parameter.getValue()
+        model: ET.Element = read_model(sbml_file)
+        lists: dict[str, ET.Element] = sections(model)
+        param: dict[str, float] = {
+            str(p.get("id")): float(p.get("value", "nan"))
+            for p in lists.get("listOfParameters", ())
+        }
 
         # Genes
-        if sbml_fbc is not None:
-            for gene_product in sbml_fbc.getListOfGeneProducts():
-                mn.__genes.add(gene_product.getId())
+        for gene_product in lists.get("listOfGeneProducts", ()):
+            mn.__genes.add(str(attr(gene_product, "id")))
 
         # Species
-        for species in sbmlm.getListOfSpecies():
-            name = species.getId()
-            if not species.getBoundaryCondition():
+        for species in lists.get("listOfSpecies", ()):
+            name: str = str(species.get("id"))
+            if species.get("boundaryCondition", "false") != "true":
                 mn.__metabolites.add(name)
             else:
                 mn.__exchanges[name] = None
 
         # Reactions
-        for reaction in sbmlm.getListOfReactions():
-            name = reaction.getId()
+        for reaction in lists.get("listOfReactions", ()):
+            name = str(reaction.get("id"))
             mn.__reactions.add(name)
-            stoechiometry: float
-            # Reactants
-            for reactant in reaction.getListOfReactants():
-                stoechiometry = float(reactant.getStoichiometry())
-                reactant_name: str = reactant.getSpecies()
-                mn.__S[(reactant_name, name)] = -stoechiometry
-                if reactant_name in mn.__exchanges:
-                    mn.__exchanges[reactant_name] = name
-
-            # Products
-            for product in reaction.getListOfProducts():
-                stoechiometry = float(product.getStoichiometry())
-                product_name: str = product.getSpecies()
-                mn.__S[(product_name, name)] = stoechiometry
-                if product_name in mn.__exchanges:
-                    mn.__exchanges[product_name] = name
+            reversible: bool = reaction.get("reversible", "true") == "true"
+            association: ET.Element | None = None
+            for part in reaction:
+                kind: str = local(part.tag)
+                if kind in ("listOfReactants", "listOfProducts"):
+                    sign: float = -1.0 if kind == "listOfReactants" else 1.0
+                    for ref in part:
+                        metabolite: str = str(ref.get("species"))
+                        coeff: float = float(ref.get("stoichiometry", "1"))
+                        mn.__S[(metabolite, name)] = sign * coeff
+                        if metabolite in mn.__exchanges:
+                            mn.__exchanges[metabolite] = name
+                elif kind == "geneProductAssociation":
+                    association = part[0] if len(part) else None
 
             # Bounds
-            reaction_fbc: FbcReactionPlugin | None = reaction.getPlugin("fbc")
-            low_bound: float
-            up_bound: float
-            if reaction_fbc is not None:
-                low_bound = param[reaction_fbc.getLowerFluxBound()]
-                up_bound = param[reaction_fbc.getUpperFluxBound()]
+            low_name: str | None = attr(reaction, "lowerFluxBound")
+            up_name: str | None = attr(reaction, "upperFluxBound")
+            if low_name is not None and up_name is not None:
+                mn.__bounds[name] = (param[low_name], param[up_name])
             else:
-                low_bound = 0
-                up_bound = float("inf")
-                if reaction.getReversible():
-                    low_bound = float("-inf")
-            mn.__bounds[name] = (low_bound, up_bound)
+                mn.__bounds[name] = (
+                    float("-inf") if reversible else 0.0,
+                    float("inf"),
+                )
 
             # Is Reversible
-            if reaction.getReversible():
+            if reversible:
                 mn.__reversible_reactions.add(name)
                 mn.irreversible = False
 
             # Genes formula
-            mn.__genes_association[name] = MetabolicNetwork.__parse_gene_formula(
-                reaction
+            mn.__genes_association[name] = (
+                "" if association is None
+                else cls.__parse_gene_formula(association)
             )
 
         return mn

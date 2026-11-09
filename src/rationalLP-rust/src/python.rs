@@ -33,7 +33,7 @@ fn upper_bound(x: f64) -> PyResult<Option<Rational>> {
     }
 }
 
-fn bounds((lower, upper): (f64, f64)) -> PyResult<Bounds> {
+fn bound_pair((lower, upper): (f64, f64)) -> PyResult<Bounds> {
     Ok((lower_bound(lower)?, upper_bound(upper)?))
 }
 
@@ -55,10 +55,10 @@ impl PyFba {
     fn new(
         rows: usize,
         stoichiometry: Vec<(usize, usize, f64)>,
-        bounds_: Vec<(f64, f64)>,
+        bounds: Vec<(f64, f64)>,
         objective: usize,
     ) -> PyResult<PyFba> {
-        let reactions = bounds_.len();
+        let reactions = bounds.len();
         if objective >= reactions {
             return Err(PyValueError::new_err("the objective is not a reaction"));
         }
@@ -69,9 +69,9 @@ impl PyFba {
             }
             triples.push((row, reaction, finite(coefficient, "a coefficient")?));
         }
-        let bounds_ = bounds_.into_iter().map(bounds).collect::<PyResult<Vec<Bounds>>>()?;
+        let bounds = bounds.into_iter().map(bound_pair).collect::<PyResult<Vec<Bounds>>>()?;
         Ok(PyFba {
-            fba: Fba::new(rows, &triples, bounds_, objective),
+            fba: Fba::new(rows, &triples, bounds, objective),
             reactions,
         })
     }
@@ -79,13 +79,13 @@ impl PyFba {
     /// Solves with the (reaction, lower, upper) bounds replacing the reaction's
     /// own for this call only. Returns `(optimum, fluxes)`: `(None, [])` if
     /// infeasible, `(inf, fluxes)` if unbounded.
-    fn solve(&mut self, overrides: Vec<(usize, f64, f64)>, pfba: bool) -> PyResult<(Option<f64>, Vec<f64>)> {
-        let mut converted = Vec::with_capacity(overrides.len());
-        for (reaction, lower, upper) in overrides {
+    fn solve(&mut self, bounds: Vec<(usize, f64, f64)>, pfba: bool) -> PyResult<(Option<f64>, Vec<f64>)> {
+        let mut converted = Vec::with_capacity(bounds.len());
+        for (reaction, lower, upper) in bounds {
             if reaction >= self.reactions {
                 return Err(PyValueError::new_err("bound on a reaction that does not exist"));
             }
-            let (lower, upper) = bounds((lower, upper))?;
+            let (lower, upper) = bound_pair((lower, upper))?;
             converted.push((reaction, lower, upper));
         }
         let (status, fluxes) = self.fba.solve(&converted, pfba);

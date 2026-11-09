@@ -7,7 +7,7 @@ Python 3 module `rFBApy` for rFBA simulations based on
 
 Python >= 3.10, and a [Rust toolchain](https://rustup.rs) >= 1.88: pip builds the exact LP solver (`src/rationalLP-rust/`, see below) when it installs rFBApy.
 
-Dependencies (pulled by pip): `python-libsbml`, `gurobipy`, `swiglpk`, `pandas`, `lark`, `networkx`, `clingo`, `merrinasp` (from GitHub), `pulp<4`.
+Dependencies (pulled by pip): `gurobipy`, `swiglpk`, `pandas`, `lark`, `networkx`, `clingo`, `merrinasp` (from GitHub), `pulp<4`.
 
 LP solver: GLPK by default. Gurobi works too (`--lpsolver gurobi`) but needs a license. `--lpsolver rational` solves exactly over the rationals, free of numerical noise.
 

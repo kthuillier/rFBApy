@@ -5,8 +5,6 @@ from __future__ import annotations
 
 from typing import Literal
 
-from libsbml import FbcReactionPlugin, Model, SBMLDocument, SBMLReader  # type: ignore
-
 # ~ Float solvers: values within this of 0 are numerical noise and returned as 0
 ACCURACY: float = 1e-8
 
@@ -36,96 +34,18 @@ class FluxBalanceAnalysis:
     # Initialization from SBML file
     # --------------------------------------------------------------------------
     @classmethod
-    def __read_sbml(cls: type[FluxBalanceAnalysis], sbml: str) \
-            -> tuple[dict[str, set[tuple[float, str]]],
-                     dict[str, tuple[float, float]]]:
-        # Object initialization
-        stochiometric_matrix: dict[str, set[tuple[float, str]]] = {}
-        bounds: dict[str, tuple[float, float]] = {}
-
-        # Open SBML file
-        sbmld: SBMLDocument = SBMLReader().readSBML(sbml)  # type: ignore
-        sbmlm: Model = sbmld.getModel()  # type: ignore
-
-        # Param
-        param: dict[str, float] = {}
-        for parameter in sbmlm.getListOfParameters():
-            param[parameter.getId()] = parameter.getValue()
-
-        name: str
-        # Species
-        boundary_species: dict[str, tuple[float, str]] = {}
-        for species in sbmlm.getListOfSpecies():
-            name = species.getId()
-            if species.getBoundaryCondition():
-                boundary_species[name] = (0, '')
-
-        # Reactions
-        for reaction in sbmlm.getListOfReactions():
-            name = reaction.getId()
-            stoechiometry: float
-            # Reactants
-            for reactant in reaction.getListOfReactants():
-                stoechiometry = float(reactant.getStoichiometry())
-                reactant_name: str = reactant.getSpecies()
-                if reactant_name in boundary_species:
-                    assert boundary_species[reactant_name][0] == 0
-                    boundary_species[reactant_name] = (-stoechiometry, name)
-                    continue
-                stochiometric_matrix.setdefault(
-                    reactant_name, set()
-                ).add((-stoechiometry, name))
-
-            # Products
-            for product in reaction.getListOfProducts():
-                stoechiometry = float(product.getStoichiometry())
-                product_name: str = product.getSpecies()
-                if product_name in boundary_species:
-                    assert boundary_species[product_name][0] == 0
-                    boundary_species[product_name] = (stoechiometry, name)
-                    continue
-                stochiometric_matrix.setdefault(
-                    product_name, set()
-                ).add((stoechiometry, name))
-
-            # Bounds
-            reaction_fbc: FbcReactionPlugin | None = reaction.getPlugin('fbc')
-            bounds[name] = (float('-inf'), float('inf'))
-            if reaction_fbc is not None:
-                bounds[name] = (
-                    param[reaction_fbc.getLowerFluxBound()],
-                    param[reaction_fbc.getUpperFluxBound()]
-                )
-            else:
-                if not reaction.getReversible():
-                    bounds[name] = (0, float('inf'))
-
-        return (stochiometric_matrix, bounds)
-
-    # --------------------------------------------------------------------------
-    # Initialization from SBML file
-    # --------------------------------------------------------------------------
-    @classmethod
     def load_sbml(cls: type[FluxBalanceAnalysis], sbml: str, objective: str,
                   lpeps: float | None = ACCURACY) -> FluxBalanceAnalysis:
-        # Parse SBML
-        stoichiometry, bounds = cls.__read_sbml(sbml)
-        # Initialize the FBA object
-        fba: FluxBalanceAnalysis = cls._lpinit(
-            objective, stoichiometry, bounds
+        # ~ Lazy: metabolic_network imports this module
+        from rFBApy.metabolic_network import MetabolicNetwork
+        mn: MetabolicNetwork = MetabolicNetwork.read_sbml(sbml)
+        internal: set[str] = mn.metabolites(False, True)
+        return cls.load_mn(
+            objective,
+            {(m, r): c for (m, r), c in mn.stoichiometry().items() if m in internal},
+            mn.bounds(),
+            lpeps,
         )
-        fba._objective = objective
-        fba._lpeps = lpeps
-        # ~ pFBA's |flux| auxiliary variables/constraints are NOT built here:
-        # they roughly double the model size (one aux var + 2 constraints per
-        # reaction), which is wasted work -- and, on a size-limited license,
-        # can make an otherwise-fitting model too large -- whenever a caller
-        # never actually requests pfba=True. __setup_pfba() builds them lazily
-        # on the first solve(pfba=True) call instead; just remember which
-        # reactions they'll cover.
-        fba.__pfba_reactions = frozenset(bounds.keys())
-        # Return the initialized FBA object
-        return fba
 
     # --------------------------------------------------------------------------
     # Initialization from Metabolic Network
@@ -147,7 +67,7 @@ class FluxBalanceAnalysis:
         )
         fba._objective = objective
         fba._lpeps = lpeps
-        # ~ See load_sbml(): pFBA setup is deferred to the first
+        # ~ pFBA setup is deferred to the first
         # solve(pfba=True) call, not done unconditionally here.
         fba.__pfba_reactions = frozenset(bounds.keys())
         # Return the initialized FBA object
