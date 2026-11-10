@@ -77,6 +77,15 @@ class BoolExpr(ABC):
     def thresholds(self: BoolExpr) -> frozenset[tuple[str, float]]: ...
 
 
+def _negation(expr: BoolExpr) -> BoolExpr:
+    # ~ The simplified negation of an already simplified `expr`
+    if isinstance(expr, NotExpr):
+        return expr.item
+    if isinstance(expr, ThresholdExpr):
+        return ThresholdExpr(expr.variable, _OPS_NEG[expr.op], expr.value)
+    return NotExpr(expr)
+
+
 # ~ Boolean nodes
 class AndExpr(BoolExpr):
     __slots__ = ("_hash", "items")
@@ -112,6 +121,8 @@ class AndExpr(BoolExpr):
                 continue
             if eval_item in seen:
                 continue
+            if _negation(eval_item) in seen:  # X & !X
+                return FALSE
             seen.add(eval_item)
             eval_items.append(eval_item)
         if len(eval_items) == 0:
@@ -213,6 +224,8 @@ class OrExpr(BoolExpr):
                 continue
             if eval_item in seen:
                 continue
+            if _negation(eval_item) in seen:  # X | !X
+                return TRUE
             seen.add(eval_item)
             eval_items.append(eval_item)
         if len(eval_items) == 0:

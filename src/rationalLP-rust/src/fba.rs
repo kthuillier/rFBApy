@@ -16,7 +16,14 @@ pub type Bounds = (Option<Rational>, Option<Rational>);
 /// An FBA problem `S v = 0`, `lb ≤ v ≤ ub`, maximizing one reaction.
 #[derive(Clone, Debug)]
 pub struct Fba {
-    lp: Lp,
+    /// Maximizes the objective reaction. Its objective never changes, so its basis
+    /// stays optimal across solves.
+    lp_max: Lp,
+    /// Minimizes the total absolute flux, with the objective columns fixed. Kept
+    /// apart from `lp_max` so that each step warm-starts from its own last basis.
+    lp_pfba: Lp,
+    /// Whether `lp_pfba` has a basis of its own (else it starts from `lp_max`'s).
+    pfba_started: bool,
     reactions: usize,
     objective: usize,
     /// Bounds of each reaction. Column `r` of the LP is `v⁺_r`, column `n + r` is `v⁻_r`.
@@ -69,8 +76,15 @@ impl Fba {
             let negated: Vec<(usize, Rational)> = column.iter().map(|(row, c)| (*row, -c.clone())).collect();
             lp.add_column(&negated, minus.0.clone(), minus.1.clone());
         }
+        let one = Rational::from_int(1);
+        lp.set_objective(&[(objective, -one.clone()), (n + objective, one.clone())]);
+        let mut lp_pfba = lp.clone();
+        let total: Vec<(usize, Rational)> = (0..2 * n).map(|column| (column, one.clone())).collect();
+        lp_pfba.set_objective(&total);
         Fba {
-            lp,
+            lp_max: lp,
+            lp_pfba,
+            pfba_started: false,
             reactions: n,
             objective,
             bounds,
@@ -101,18 +115,17 @@ impl Fba {
         }
         for (r, (lb, ub)) in effective.into_iter().enumerate() {
             let (plus, minus) = split(&(lb.clone(), ub.clone()));
-            self.lp.set_bounds(r, plus.0, plus.1);
-            self.lp.set_bounds(n + r, minus.0, minus.1);
+            for lp in [&mut self.lp_max, &mut self.lp_pfba] {
+                lp.set_bounds(r, plus.0.clone(), plus.1.clone());
+                lp.set_bounds(n + r, minus.0.clone(), minus.1.clone());
+            }
         }
-        let one = Rational::from_int(1);
-        self.lp
-            .set_objective(&[(self.objective, -one.clone()), (n + self.objective, one.clone())]);
-        let optimum = match self.lp.solve() {
+        let optimum = match self.lp_max.solve() {
             Status::Infeasible => return (Status::Infeasible, Vec::new()),
-            Status::Unbounded => return (Status::Unbounded, self.fluxes()),
+            Status::Unbounded => return (Status::Unbounded, Self::fluxes(&self.lp_max, n)),
             Status::Optimal(minimum) => -minimum,
         };
-        let first = self.fluxes();
+        let first = Self::fluxes(&self.lp_max, n);
         if !pfba {
             return (Status::Optimal(optimum), first);
         }
@@ -129,17 +142,20 @@ impl Fba {
                 (Some(-optimum.clone()), Some(-optimum.clone())),
             )
         };
-        self.lp.set_bounds(self.objective, plus.0, plus.1);
-        self.lp.set_bounds(n + self.objective, minus.0, minus.1);
-        let total: Vec<(usize, Rational)> = (0..2 * n).map(|column| (column, one.clone())).collect();
-        self.lp.set_objective(&total);
-        let second = self.lp.solve();
+        self.lp_pfba.set_bounds(self.objective, plus.0, plus.1);
+        self.lp_pfba.set_bounds(n + self.objective, minus.0, minus.1);
+        if !self.pfba_started {
+            // The optimal basis of the first step is a valid start for the second.
+            self.lp_pfba.set_basis(self.lp_max.basis());
+        }
+        let second = self.lp_pfba.solve();
+        self.pfba_started = matches!(second, Status::Optimal(_));
         debug_assert!(
             matches!(second, Status::Optimal(_)),
             "the second step is feasible and bounded below"
         );
-        let fluxes = if matches!(second, Status::Optimal(_)) {
-            self.fluxes()
+        let fluxes = if self.pfba_started {
+            Self::fluxes(&self.lp_pfba, n)
         } else {
             first
         };
@@ -147,16 +163,17 @@ impl Fba {
     }
 
     /// `v⁺ − v⁻` of every reaction at the last point.
-    fn fluxes(&self) -> Vec<Rational> {
-        (0..self.reactions)
-            .map(|r| self.lp.value(r).clone() - self.lp.value(self.reactions + r))
+    fn fluxes(lp: &Lp, reactions: usize) -> Vec<Rational> {
+        (0..reactions)
+            .map(|r| lp.value(r).clone() - lp.value(reactions + r))
             .collect()
     }
 
-    /// Pivots made so far by the float stage and by the exact stage.
+    /// Pivots made so far by the float stage and by the exact stage, in both steps.
     #[must_use]
     pub fn pivots(&self) -> (usize, usize) {
-        self.lp.pivots()
+        let (max, pfba) = (self.lp_max.pivots(), self.lp_pfba.pivots());
+        (max.0 + pfba.0, max.1 + pfba.1)
     }
 }
 
@@ -164,7 +181,7 @@ impl Fba {
 mod tests {
     use super::{Bounds, Fba, split};
     use crate::lp::Status;
-    use crate::number::Rational;
+    use crate::number::{Number, Rational};
 
     fn q(n: i64) -> Rational {
         Rational::from_int(n)
@@ -246,6 +263,62 @@ mod tests {
         // ... until that is lifted too.
         let (status, _) = fba.solve(&[(0, Some(q(0)), None), (1, Some(q(0)), None)], true);
         assert_eq!(status, Status::Unbounded);
+    }
+
+    type Overrides = Vec<(usize, Option<Rational>, Option<Rational>)>;
+
+    fn total(fluxes: &[Rational]) -> Rational {
+        fluxes.iter().fold(q(0), |sum, v| sum + &v.abs())
+    }
+
+    /// A sequence of solves on one object gives the optimum and the total flux of a
+    /// fresh object for each call (the pFBA vector itself may differ).
+    #[test]
+    fn sequence_matches_fresh_problems() {
+        let calls: Vec<Overrides> = vec![
+            vec![],
+            vec![(0, Some(q(0)), Some(q(4)))],
+            vec![(1, Some(q(0)), Some(q(0)))],
+            vec![(0, Some(q(0)), Some(q(7))), (1, Some(q(-3)), Some(q(5)))],
+            vec![(1, Some(q(2)), Some(q(1)))],
+            vec![(0, Some(q(0)), None)],
+            vec![],
+        ];
+        let mut fba = chain();
+        for overrides in &calls {
+            let (status, fluxes) = fba.solve(overrides, true);
+            let (fresh_status, fresh_fluxes) = chain().solve(overrides, true);
+            assert_eq!(status, fresh_status, "{overrides:?}");
+            assert_eq!(total(&fluxes), total(&fresh_fluxes), "{overrides:?}");
+        }
+    }
+
+    /// FBA only, pFBA, then FBA only again on the same object.
+    #[test]
+    fn pfba_switching_stays_consistent() {
+        let mut fba = chain();
+        let (status, fluxes) = fba.solve(&[(0, Some(q(0)), Some(q(4)))], false);
+        assert_eq!((status, fluxes), (Status::Optimal(q(4)), vec![q(4), q(4), q(4)]));
+        let (status, fluxes) = fba.solve(&[(0, Some(q(0)), Some(q(6)))], true);
+        assert_eq!((status, fluxes), (Status::Optimal(q(6)), vec![q(6), q(6), q(6)]));
+        let (status, fluxes) = fba.solve(&[], false);
+        assert_eq!((status, fluxes), (Status::Optimal(q(10)), vec![q(10), q(10), q(10)]));
+        let (status, fluxes) = fba.solve(&[(0, Some(q(0)), Some(q(3)))], true);
+        assert_eq!((status, fluxes), (Status::Optimal(q(3)), vec![q(3), q(3), q(3)]));
+    }
+
+    /// An infeasible or unbounded call does not spoil the next feasible one.
+    #[test]
+    fn feasible_after_infeasible_and_unbounded() {
+        let mut fba = chain();
+        assert_eq!(fba.solve(&[], true).0, Status::Optimal(q(10)));
+        assert_eq!(fba.solve(&[(2, Some(q(11)), None)], true).0, Status::Infeasible);
+        let (status, fluxes) = fba.solve(&[(0, Some(q(0)), Some(q(5)))], true);
+        assert_eq!((status, fluxes), (Status::Optimal(q(5)), vec![q(5), q(5), q(5)]));
+        let lifted = [(0, Some(q(0)), None), (1, Some(q(0)), None)];
+        assert_eq!(fba.solve(&lifted, true).0, Status::Unbounded);
+        let (status, fluxes) = fba.solve(&[], true);
+        assert_eq!((status, fluxes), (Status::Optimal(q(10)), vec![q(10), q(10), q(10)]));
     }
 
     /// A negative optimum: the objective reaction is forced backwards, and pFBA

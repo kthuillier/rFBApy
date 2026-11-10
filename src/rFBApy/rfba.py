@@ -173,7 +173,9 @@ def update_kinetics(
         r: str | None = mn.exchange(n)
         assert r is not None
         s_mr: float = mn.stoichiometry()[(n, r)]
-        w_[n] = wn_ - ((s_mr * v[r]) / growth) * biomass * (
+        # ~ Each step consumes/produces with the biomass at the end of the step (as dynamicRfba):
+        # ~ sum_{i=1..k} s.v.B0.e^(mu.tau.i).(e^(mu.tau) - 1)/mu = s.v.B0.e^(mu.tau).(e^(mu.tau.k) - 1)/mu
+        w_[n] = wn_ - ((s_mr * v[r]) / growth) * biomass * exp(growth * tau) * (
             1 - exp(growth * tau * k)
         )
         w_[n] = max(0.0, w_[n])
@@ -235,7 +237,8 @@ def estimate_metabolite_threshold_crossing_ts(
     if w[m] > b and direction >= 0:
         return inf  # type: ignore  # ne descendra jamais sous b
 
-    arg = 1 + ((b - w[m]) * v[obj]) / (s_mr * v[r] * biomass)
+    # ~ Same end-of-step biomass as update_kinetics
+    arg = 1 + ((b - w[m]) * v[obj]) / (s_mr * v[r] * biomass * exp(v[obj] * tau))
     if arg <= 0:
         return inf  # type: ignore  # asymptote : borne jamais atteinte
 
@@ -286,7 +289,7 @@ def estimate_state_duration(
         x_plus_1 = update_regulatory_state(
             mn,
             bn,
-            w_plus_1,
+            w,
             v,
             x,
             settings=settings,
@@ -336,7 +339,8 @@ def next_iter(
         next_w,
     )
     if bn is not None:
-        next_x = update_regulatory_state(mn, bn, next_w, v, x, settings)
+        # ~ The rules read the previous step: states x, fluxes v and concentrations w (as dynamicRfba)
+        next_x = update_regulatory_state(mn, bn, w, v, x, settings)
         bounds |= {
             n: (0.0, 0.0)
             for n in bn
@@ -417,15 +421,11 @@ def simulate_rfba(
         m: concentrations.get(m, 0.0) for m in mn.metabolites(True, False)
     }
     if bn is not None:
-        x: dict[str, int | None] = bn(
-            {n: None for n in bn if n not in mn.metabolites(True, False)}
-            | {n: 1 if w.get(n, 0) > 0 else 0 for n in mn.metabolites(True, False)}
-            | {n: None for n in mn.reactions()}
-            | state  # type: ignore
-            | mutations
-            | settings
-        )
-        x |= {n: None for n in bn if n in mn.reactions()}
+        # ~ Initial state: undetermined (None) unless imposed (initial state, mutations).
+        # ~ The rules are not evaluated before the first step.
+        x: dict[str, int | None] = {n: None for n in bn}
+        x |= {n: val for n, val in state.items() if n in bn}  # type: ignore
+        x |= {n: val for n, val in mutations.items() if n in bn}  # type: ignore
     else:
         x: dict[str, int | None] = {}
 

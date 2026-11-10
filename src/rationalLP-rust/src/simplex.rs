@@ -87,6 +87,10 @@ pub struct Simplex<T: Number> {
     pub(crate) basis: Basis,
     /// The factorization of the basis, if it is up to date with `basis.head`.
     factor: Option<Factor<T>>,
+    /// The phase 2 reduced costs `c_j − yᵀa_j` (0 for basic variables), if they
+    /// are up to date with `basis.head` and `cost`. They do not depend on the
+    /// bounds, so a run that does not pivot reuses them from the previous one.
+    reduced: Option<Vec<T>>,
     pub(crate) x: Vec<T>,
     pivots: usize,
 }
@@ -106,6 +110,7 @@ impl<T: Number> Simplex<T> {
                 place: (0..m).map(Place::Basic).collect(),
             },
             factor: None,
+            reduced: None,
             x: vec![T::zero(); m],
             pivots: 0,
         }
@@ -118,6 +123,7 @@ impl<T: Number> Simplex<T> {
         self.lower.push(lower);
         self.upper.push(upper);
         self.cost.push(T::zero());
+        self.reduced = None;
         self.basis.place.push(Place::Free);
         self.x.push(T::zero());
         self.cols.len() - 1
@@ -137,6 +143,7 @@ impl<T: Number> Simplex<T> {
     pub fn set_costs(&mut self, costs: Vec<T>) {
         assert_eq!(costs.len(), self.cost.len(), "one cost per variable");
         self.cost = costs;
+        self.reduced = None;
     }
 
     /// The basis.
@@ -149,6 +156,7 @@ impl<T: Number> Simplex<T> {
     pub fn set_basis(&mut self, basis: &Basis) {
         if basis.head != self.basis.head {
             self.factor = None;
+            self.reduced = None;
         }
         self.basis = basis.clone();
     }
@@ -206,9 +214,19 @@ impl<T: Number> Simplex<T> {
             }
             let infeasibility = self.infeasibility_costs();
             let phase_one = infeasibility.is_some();
-            let basic_costs =
-                infeasibility.unwrap_or_else(|| self.basis.head.iter().map(|&j| self.cost[j].clone()).collect());
-            let y = self.factor.as_ref().expect("factor").btran(&basic_costs);
+            // The exact stage keeps the reduced costs while the basis and the costs
+            // do not change; no btran is needed then.
+            let cached = T::EXACT && !phase_one;
+            let y = if cached && self.reduced.is_some() {
+                Vec::new()
+            } else {
+                let basic_costs =
+                    infeasibility.unwrap_or_else(|| self.basis.head.iter().map(|&j| self.cost[j].clone()).collect());
+                self.factor.as_ref().expect("factor").btran(&basic_costs)
+            };
+            if cached && self.reduced.is_none() {
+                self.reduced = Some(self.reduced_costs(&y));
+            }
             let bland = degenerate > self.m;
             let Some((j, up)) = self.entering(&y, phase_one, bland) else {
                 return if phase_one {
@@ -285,6 +303,7 @@ impl<T: Number> Simplex<T> {
 
     /// Factors the basis, replacing the variables of a singular one by slacks.
     fn refactor(&mut self) {
+        self.reduced = None;
         loop {
             let columns: Vec<&[(usize, T)]> = self.basis.head.iter().map(|&j| self.cols[j].as_slice()).collect();
             match Factor::new(self.m, &columns) {
@@ -373,9 +392,40 @@ impl<T: Number> Simplex<T> {
         any.then_some(costs)
     }
 
+    /// The reduced costs `c_j − yᵀa_j` of the nonbasic variables (0 for the basic ones).
+    fn reduced_costs(&self, y: &[T]) -> Vec<T> {
+        (0..self.cols.len())
+            .map(|j| {
+                if matches!(self.basis.place[j], Place::Basic(_)) {
+                    return T::zero();
+                }
+                self.reduced_cost(j, y, false)
+            })
+            .collect()
+    }
+
+    /// `c_j − yᵀa_j` (`c_j` is 0 in phase 1).
+    fn reduced_cost(&self, j: usize, y: &[T], phase_one: bool) -> T {
+        let mut d = if phase_one { T::zero() } else { self.cost[j].clone() };
+        for (r, a) in &self.cols[j] {
+            if !y[*r].is_zero() {
+                d -= &(a.clone() * &y[*r]);
+            }
+        }
+        d
+    }
+
     /// The entering variable and whether it increases: the largest reduced cost
-    /// (Dantzig), or the first eligible variable under Bland's rule.
+    /// (Dantzig), or the first eligible variable under Bland's rule. In phase 2
+    /// of the exact stage the reduced costs come from `self.reduced`, else from
+    /// `y`. The signs are checked against the places and bounds every time, since
+    /// those change between runs.
     fn entering(&self, y: &[T], phase_one: bool, bland: bool) -> Option<(usize, bool)> {
+        let cached = if T::EXACT && !phase_one {
+            self.reduced.as_deref()
+        } else {
+            None
+        };
         let tolerance = T::optimality_tol();
         let negative_tolerance = -tolerance.clone();
         let mut best: Option<(T, usize, bool)> = None;
@@ -389,12 +439,7 @@ impl<T: Number> Simplex<T> {
             {
                 continue;
             }
-            let mut d = if phase_one { T::zero() } else { self.cost[j].clone() };
-            for (r, a) in &self.cols[j] {
-                if !y[*r].is_zero() {
-                    d -= &(a.clone() * &y[*r]);
-                }
-            }
+            let d = cached.map_or_else(|| self.reduced_cost(j, y, phase_one), |reduced| reduced[j].clone());
             let can_increase = matches!(place, Place::AtLower | Place::Free);
             let can_decrease = matches!(place, Place::AtUpper | Place::Free);
             let up = if d < negative_tolerance && can_increase {
@@ -527,6 +572,7 @@ impl<T: Number> Simplex<T> {
         self.basis.head[position] = j;
         self.basis.place[j] = Place::Basic(position);
         self.factor.as_mut().expect("factor").update(position, d);
+        self.reduced = None;
         self.pivots += 1;
     }
 }

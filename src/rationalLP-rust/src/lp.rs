@@ -11,7 +11,7 @@
 //! between solves is a warm start.
 
 use crate::number::{Number, Rational};
-use crate::simplex::{Outcome, Simplex};
+use crate::simplex::{Basis, Outcome, Simplex};
 
 /// The result of a solve.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -155,6 +155,18 @@ impl Lp {
         }
     }
 
+    /// The basis the next solve starts from.
+    #[must_use]
+    pub fn basis(&self) -> &Basis {
+        self.exact.basis()
+    }
+
+    /// Starts the next solve from `basis` (taken from a program with the same
+    /// rows and columns).
+    pub fn set_basis(&mut self, basis: &Basis) {
+        self.exact.set_basis(basis);
+    }
+
     /// The value of a column after the last solve (meaningless after an
     /// infeasible one).
     #[must_use]
@@ -253,6 +265,51 @@ mod tests {
         assert_eq!(lp.solve(), Status::Infeasible);
         lp.set_bounds(1, some(0), some(5));
         assert_eq!(lp.solve(), Status::Optimal(Rational::new(-5, 7)));
+    }
+
+    /// The exact stage reuses its reduced costs while the basis and the costs are
+    /// unchanged: new bounds and new costs must still give the right answers.
+    #[test]
+    fn reduced_costs_follow_bounds_and_costs() {
+        for float_stage in [true, false] {
+            // min -x1 - 2 x2  s.t.  x1 + x2 <= 4, -10 <= x1 - x2 <= 10, 0 <= x <= 3.
+            let mut lp = Lp::new(2);
+            lp.float_stage = float_stage;
+            lp.add_column(&[(0, q(1)), (1, q(1))], some(0), some(3));
+            lp.add_column(&[(0, q(1)), (1, q(-1))], some(0), some(3));
+            lp.set_row_bounds(0, None, some(4));
+            lp.set_row_bounds(1, some(-10), some(10));
+            lp.set_objective(&[(0, q(-1)), (1, q(-2))]);
+            assert_eq!(lp.solve(), Status::Optimal(q(-7)));
+            for step in 0..6 {
+                match step {
+                    0 => lp.set_bounds(1, some(0), some(1)),
+                    1 => lp.set_row_bounds(0, None, some(2)),
+                    2 => lp.set_objective(&[(0, q(2)), (1, q(-1))]),
+                    3 => lp.set_bounds(0, some(1), some(3)),
+                    4 => lp.set_objective(&[(0, q(-1)), (1, q(-2))]),
+                    _ => lp.set_bounds(0, some(0), some(3)),
+                }
+                let status = lp.solve();
+                let mut fresh = Lp::new(2);
+                fresh.add_column(
+                    &[(0, q(1)), (1, q(1))],
+                    lp.exact.lower[2].clone(),
+                    lp.exact.upper[2].clone(),
+                );
+                fresh.add_column(
+                    &[(0, q(1)), (1, q(-1))],
+                    lp.exact.lower[3].clone(),
+                    lp.exact.upper[3].clone(),
+                );
+                fresh.set_row_bounds(0, lp.exact.lower[0].clone(), lp.exact.upper[0].clone());
+                fresh.set_row_bounds(1, some(-10), some(10));
+                let costs: Vec<_> = (0..2).map(|j| (j, lp.exact.cost[2 + j].clone())).collect();
+                fresh.set_objective(&costs);
+                assert_eq!(status, fresh.solve(), "step {step}");
+                assert!(lp.exact.certify());
+            }
+        }
     }
 
     #[test]

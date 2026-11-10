@@ -143,6 +143,8 @@ pub trait Number:
     + for<'a> AddAssign<&'a Self>
     + for<'a> SubAssign<&'a Self>
 {
+    /// Whether the arithmetic is exact (and slow enough to be worth caching).
+    const EXACT: bool;
     /// Zero.
     fn zero() -> Self;
     /// One.
@@ -165,6 +167,8 @@ pub trait Number:
 }
 
 impl Number for f64 {
+    const EXACT: bool = false;
+
     fn zero() -> f64 {
         0.0
     }
@@ -195,6 +199,8 @@ impl Number for f64 {
 }
 
 impl Number for Rational {
+    const EXACT: bool = true;
+
     fn zero() -> Rational {
         Rational(BigRational::zero())
     }
