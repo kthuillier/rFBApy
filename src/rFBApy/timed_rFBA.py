@@ -18,91 +18,95 @@ from rFBApy.rfba import (
     update_kinetics
 )
 
+from rFBApy.fba import DEFAULT_SOLVER, FluxBalanceAnalysis
+from rFBApy.metabolic_network import MetabolicNetwork
+from rFBApy.regulatory_network import RegulatoryNetwork
+
 # ~ Custom type
 PendingEvents = dict[str, tuple[int, float]]
 
 # ==============================================================================
 # Global
 # ==============================================================================
-ENZYME_DELAY: float = 0.25
+REGULATORY_DELAY: float = 0.25
 TIME_TOLERANCE: float = 1e-8
 METABOLITE_TOLERANCE: float = 1e-8
 FLUX_TOLERANCE: float = 1e-8
 ACCURACY: float = 1e-8
 
 def schedule_regulatory_transitions(
-    enzyme_nodes: set[str],
     x: dict[str, int | None],
     desired_x: dict[str, int | None],
     pending_events: PendingEvents,
     current_time: float,
 ) -> tuple[dict[str, int | None], PendingEvents]:
-    x_: dict[str, int | None] = x.copy()
     pending_events_: PendingEvents = pending_events.copy()
 
     for key, value in desired_x.items():
         if value is None:
             continue
 
-        if key not in enzyme_nodes:
-            x_[key] = value
-        else:
-            if x[key] == value:
-                pending_events_.pop(key, None)
-                # On "annule" les modifications qui pourraient arriver
-                continue
-            if key in pending_events and pending_events[key][0] == value:
-                continue
-            pending_events_[key] = (value, current_time + ENZYME_DELAY)
-    return x_, pending_events_
+        if x.get(key) == value:
+            _ = pending_events_.pop(key, None)
+            # On "annule" les modifications qui pourraient arriver
+            continue
+
+        if key in pending_events_ and pending_events_[key][0] == value:
+            continue
+
+        pending_events_[key] = (value, current_time + REGULATORY_DELAY)
+    return pending_events_
 
 def initialize_simulation(
     mn: MetabolicNetwork,
-    bn,
-    enzyme_nodes: set[str], 
+    bn: RegulatoryNetwork| None,
+    fba: FluxBalanceAnalysis, 
+    obj: str,
     concentrations: dict[str, float],  # noqa: B006
     state: dict[str, int],  # noqa: B006
     mutations: dict[str, int],  # noqa: B006
     settings: dict[str, bool | int | float],  # noqa: B006
     biomass: float,
+    time_tolerance: float,
+    pfba: bool = True,
 ) -> tuple[dict[str, float], dict[str, float], dict[str, int | None], float, float, PendingEvents]:
     v: dict[str, float] = {r: 0.0 for r in mn.reactions()}
     w: dict[str, float] = {
         m: concentrations.get(m, 0.0) for m in mn.metabolites(True, False)
     }
     pending_events = {}
-    if bn is not None:
+    if (bn is not None):
         x: dict[str, int | None] = state.copy()
-        for enzyme in enzyme_nodes:
-            x.setdefault(enzyme, 0)
-            # Supposition faite
+        x |= {n: 0 for n in bn if n in mn.reactions()}
+        # Reactions are set to 0 at the start because of the delay.
+        # Currently, it overwrites `state` on reaction nodes.
 
         desired_x: dict[str, int | None] = bn(
             {n: None for n in bn if n not in mn.metabolites(True, False)}
-            | {n: 1 if w.get(n, 0) > 0 else 0 for n in mn.metabolites(True, False)}
+            | {n: 1 if w.get(n, 0) > METABOLITE_TOLERANCE else 0 for n in mn.metabolites(True, False)}
             | {n: None for n in mn.reactions()}
             | x
             | mutations
             | settings
         )
-        x, pending_events = schedule_regulatory_transitions(
-            enzyme_nodes,
+        pending_events = schedule_regulatory_transitions(
             x,
             desired_x,
             pending_events,
             0.0,
         )
-
-        x |= {n: None for n in bn if n in mn.reactions()}
     else:
         x: dict[str, int | None] = {}
+
+    elapsed_time = estimate_next_regulatory_event(pending_events, 0.0)
+    if elapsed_time == inf: raise ValueError("No event will ever happen.")
 
     return (
         v,
         w,
         x,
         biomass,
-        0.0,
+        elapsed_time,
         pending_events,
     )
 
@@ -117,6 +121,7 @@ def estimate_metabolite_threshold_crossing_time(
     b: float,
     w: dict[str, float],
     v: dict[str, float],
+    time_tolerance: float,
 ) -> float:
     if abs(w[m] - b) <= METABOLITE_TOLERANCE:
         return inf  # type: ignore  # déjà sur la borne
@@ -141,7 +146,7 @@ def estimate_metabolite_threshold_crossing_time(
 
     dt = log(arg) / v[obj]
 
-    if dt < -TIME_TOLERANCE:
+    if dt < -time_tolerance:
         return inf
 
     return max(0.0, dt)
@@ -153,12 +158,13 @@ def estimate_next_metabolic_event(
     biomass: float,
     w: dict[str, float],
     v: dict[str, float],
+    time_tolerance: float,
 ) -> float:
     metabolites: set[str] = mn.metabolites(True, False)
     thresholds = thresholds.union((m, 0.0) for m in metabolites)
     return min(
         (
-            estimate_metabolite_threshold_crossing_time(mn, obj, m, biomass, b, w, v)
+            estimate_metabolite_threshold_crossing_time(mn, obj, m, biomass, b, w, v, time_tolerance)
             for m, b in thresholds
             if m in metabolites
         ),
@@ -186,6 +192,7 @@ def estimate_next_event(
     v: dict[str, float],
     pending_events: PendingEvents,
     current_time: float,
+    time_tolerance: float,
 ) -> float:
 
     metabolic_event_time = estimate_next_metabolic_event(
@@ -195,6 +202,7 @@ def estimate_next_event(
         biomass,
         w,
         v,
+        time_tolerance,
     )
 
     regulatory_event_time = estimate_next_regulatory_event(
@@ -214,7 +222,7 @@ def estimate_next_event(
 # Elles sont réutilisées telles quelles car la fonction désirée :
 # update_biomass(dt, biomass, growth) est égale à
 # update_biomass(tau=dt, biomass, growth, k=1)
-# On devra réimplémenter ces deux fonctions pour garder la cohérence.
+# On devra plus tard réimplémenter ces deux fonctions pour garder la cohérence.
 
 
 def apply_due_regulatory_events(
@@ -283,7 +291,6 @@ def advance_to_next_event(
     current_time: float,
     elapsed_time: float,
     pending_events: PendingEvents,
-    enzyme_nodes: set[str],
     settings: dict[str, bool | int | float],  # noqa: B006,
     lpeps: float = ACCURACY,
     pfba: bool = True,
@@ -315,8 +322,7 @@ def advance_to_next_event(
 
     if bn is not None:
         desired_x = update_regulatory_state(mn, bn, next_w, v, next_x, settings)
-        next_x, next_pending_events = schedule_regulatory_transitions(
-            enzyme_nodes,
+        next_pending_events = schedule_regulatory_transitions(
             next_x,
             desired_x,
             next_pending_events,
@@ -349,6 +355,7 @@ def advance_to_next_event(
         next_v,
         next_pending_events,
         next_time,
+        time_tolerance,
     )
 
     return (next_v, next_w, next_x, next_biomass, next_elapsed_time, next_pending_events)
@@ -366,12 +373,11 @@ def simulate_timed_rfba(
     mutations: dict[str, int] = {},  # noqa: B006
     settings: dict[str, bool | int | float] = {},  # noqa: B006
     biomass: float = BIOMASS,
-
-
-
+    end_time: float = 1.0,
     lpsolver: str = DEFAULT_SOLVER,
-
-
+    lpeps: float = ACCURACY,
+    pfba: bool = True,
+    time_tolerance: float = TIME_TOLERANCE
 ) -> pd.DataFrame:
     mn, bn = load_networks(sbml, bnet, sbmlqual)
     for r, (lb, ub) in bounds.items():
@@ -381,14 +387,53 @@ def simulate_timed_rfba(
     fba: FluxBalanceAnalysis = mn.instantiate_fba(obj, lpsolver=lpsolver)
 
     bn = init_regulatory_network(mn, bn, mutations, settings)
-    enzyme_nodes = set(mn.genes()) # Première supposition faite, peut-être imprécise
     
-    simulation_state = initialize_simulation(
-        mn, bn,
-        enzyme_nodes,
+    v, w, x, biomass, elapsed_time, pending_events = initialize_simulation(
+        mn,
+        bn,
+        fba,
+        obj,
         concentrations,
         state,
         mutations,
         settings,
         biomass,
+        time_tolerance,
+        pfba,
     )
+
+    simulation_states = [(v, w, x, biomass, elapsed_time, pending_events)]
+    current_time = 0.0
+    while current_time < end_time - time_tolerance:
+        v, w, x, biomass, elapsed_time, pending_events = simulation_states[-1]
+        elapsed_time = min(
+            elapsed_time,
+            end_time - current_time,
+        )
+
+        next_simulation_state = advance_to_next_event(
+            mn,
+            bn,
+            fba,
+            obj,
+            v,
+            w,
+            x,
+            biomass,
+            current_time,
+            elapsed_time,
+            pending_events,
+            settings=settings,
+            lpeps=lpeps,
+            pfba=pfba,
+            time_tolerance=time_tolerance,
+        )
+
+        if elapsed_time <= time_tolerance:
+            raise RuntimeError(
+                f"Simulation did not advance in time (elapsed_time={elapsed_time})."
+            )
+
+        current_time += elapsed_time
+
+        simulation_states.append(next_simulation_state)
