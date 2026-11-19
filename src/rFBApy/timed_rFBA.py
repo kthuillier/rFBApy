@@ -13,9 +13,10 @@ import pandas as pd  # type: ignore
 
 # ~ Custom modules
 from rFBApy.rfba import (
-    update_regulatory_state,
     update_biomass,
-    update_kinetics
+    update_kinetics,
+    load_networks,
+    init_regulatory_network,
 )
 
 from rFBApy.fba import DEFAULT_SOLVER, FluxBalanceAnalysis
@@ -28,22 +29,30 @@ PendingEvents = dict[str, tuple[int, float]]
 # ==============================================================================
 # Global
 # ==============================================================================
-REGULATORY_DELAY: float = 0.25
 TIME_TOLERANCE: float = 1e-8
 METABOLITE_TOLERANCE: float = 1e-8
 FLUX_TOLERANCE: float = 1e-8
 ACCURACY: float = 1e-8
 
+BIOMASS: float = 1e-2
+REGULATORY_DELAY: float = 0.25
+
 def schedule_regulatory_transitions(
+    mn: MetabolicNetwork,
     x: dict[str, int | None],
     desired_x: dict[str, int | None],
     pending_events: PendingEvents,
     current_time: float,
-) -> tuple[dict[str, int | None], PendingEvents]:
+) -> PendingEvents:
     pending_events_: PendingEvents = pending_events.copy()
 
     for key, value in desired_x.items():
         if value is None:
+            continue
+
+        # La présence/absence d'une métabolite est une information toujours connue
+        # par la régulation comme c'est elle qui permet de décider les autres élements.
+        if key in mn.metabolites(True, False):
             continue
 
         if x.get(key) == value:
@@ -90,6 +99,7 @@ def initialize_simulation(
             | settings
         )
         pending_events = schedule_regulatory_transitions(
+            mn,
             x,
             desired_x,
             pending_events,
@@ -97,6 +107,11 @@ def initialize_simulation(
         )
     else:
         x: dict[str, int | None] = {}
+
+    x.update({
+        m: int(concentrations.get(m, 0.0) > METABOLITE_TOLERANCE)
+        for m in mn.metabolites(True, False)
+    })
 
     elapsed_time = estimate_next_regulatory_event(pending_events, 0.0)
     if elapsed_time == inf: raise ValueError("No event will ever happen.")
@@ -216,7 +231,21 @@ def estimate_next_event(
 # ------------------------------------------------------------------------------
 # Update Functions
 # ------------------------------------------------------------------------------
-# update_regulatory_state importée depuis rfba.py
+# Plus de mention de w, je met à jour x manuellement au début et à la fin de chaque période
+def update_regulatory_state(
+    mn: MetabolicNetwork,
+    bn: RegulatoryNetwork,
+    v: dict[str, float],
+    x: dict[str, int | None],
+    settings: dict[str, int | bool | float] = {},
+) -> dict[str, int | None]:
+
+    r_state = {
+        r: v.get(r, 0)
+        for r in mn.reactions()
+    }
+
+    return bn(x | r_state | settings)
 
 # update_biomass et update_kinetics importée depuis rfba.py 
 # Elles sont réutilisées telles quelles car la fonction désirée :
@@ -224,6 +253,16 @@ def estimate_next_event(
 # update_biomass(tau=dt, biomass, growth, k=1)
 # On devra plus tard réimplémenter ces deux fonctions pour garder la cohérence.
 
+def newly_appeared_metabolites(
+    w: dict[str, float],
+    next_w: dict[str, float],
+) -> set[str]:
+    return {
+        m
+        for m in w
+        if w[m] <= METABOLITE_TOLERANCE
+        and next_w[m] > METABOLITE_TOLERANCE
+    }
 
 def apply_due_regulatory_events(
     x: dict[str, int | None],
@@ -308,30 +347,47 @@ def advance_to_next_event(
         v,
         k=1,
     )
+    for m in next_w:
+        if abs(next_w[m]) <= METABOLITE_TOLERANCE:
+            next_w[m] = 0.0
     
     bounds: dict[str, tuple[float, float]] = update_metabolic_bounds(mn, next_w)
 
-    next_x: dict[str, int | None] = x.copy()
-    next_pending_events: PendingEvents = pending_events.copy()
+    initial_x: dict[str, int | None] = x.copy()
+    initial_pending_events: PendingEvents = pending_events.copy()
 
-    next_x, next_pending_events = apply_due_regulatory_events(
-        x,
-        pending_events,
+    updated_x, updated_pending_events = apply_due_regulatory_events(
+        initial_x,
+        initial_pending_events,
         next_time,
-        time_tolerance)
+        time_tolerance
+    )
+
+    # Les apparitions de métabolites sont immédiatement ajoutées à `x` car elles sont
+    # détectées dès le début de la période entre `current_time` et `next_time`
+    appeared = newly_appeared_metabolites(w, next_w)
+    metabolite_overrides = {m: 1 for m in appeared}
+    updated_x.update(metabolite_overrides)
 
     if bn is not None:
-        desired_x = update_regulatory_state(mn, bn, next_w, v, next_x, settings)
-        next_pending_events = schedule_regulatory_transitions(
-            next_x,
-            desired_x,
-            next_pending_events,
+        desired_updated_x = update_regulatory_state(
+            mn, bn,
+            v, updated_x,
+            settings,
+        )
+        updated_pending_events = schedule_regulatory_transitions(
+            mn,
+            updated_x,
+            desired_updated_x,
+            updated_pending_events,
             next_time,
         )
+
+    if bn is not None:
         bounds |= {
             n: (0.0, 0.0)
             for n in bn
-            if n in mn.reactions() and next_x[n] is not None and next_x[n] == 0
+            if n in mn.reactions() and updated_x[n] is not None and updated_x[n] == 0
         }
     
     opt, next_v = fba.solve(bounds, pfba=pfba)
@@ -344,6 +400,29 @@ def advance_to_next_event(
             r: vr if abs(vr) > lpeps else 0.0
             for r, vr in next_v.items()
         }
+
+    next_x = updated_x.copy()
+    for m in mn.metabolites(True, False):
+        if (w[m] > METABOLITE_TOLERANCE
+        and next_w[m] <= METABOLITE_TOLERANCE):
+            next_x[m] = 0
+
+    next_pending_events: PendingEvents = updated_pending_events.copy()
+    if bn is not None:
+        desired_next_x = update_regulatory_state(
+            mn,
+            bn,
+            next_v,
+            next_x,
+            settings,
+        )
+        next_pending_events = schedule_regulatory_transitions(
+            mn,
+            next_x,
+            desired_next_x,
+            updated_pending_events,
+            next_time,
+        )
 
     thresholds = bn.thresholds if bn is not None else set()
     next_elapsed_time = estimate_next_event(
